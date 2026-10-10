@@ -68,17 +68,22 @@ class MjbBackupManager(private val context: Context) {
             ?: throw IllegalStateException("无法创建备份目录")
 
         // 1) 一致性快照。VACUUM INTO 要求目标文件不存在。
+        //
+        //    必须用独立连接对数据库**文件**执行快照，而不是复用 Room 的连接：
+        //    Room 的 writableDatabase 是它自己持有的共享句柄，关掉它会顺手
+        //    关闭整个应用的数据库连接，把后续所有查询一起搞崩。
+        //    独立连接读同一个文件，VACUUM 会与 Room 的写入自动串行化。
         val snapshot = File(context.cacheDir, "snapshot-$STAMP.db")
         snapshot.delete()
-        var connection: androidx.sqlite.db.SupportSQLiteDatabase? = null
         try {
-            connection = androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory().let { _ ->
-                // 直接对主库发起 VACUUM INTO：Room 的写连接与它互斥，天然串行。
-                MomentDatabase.get(context).openHelper.writableDatabase
-            }
-            connection.execSQL("VACUUM INTO ?", arrayOf(snapshot.absolutePath))
-        } finally {
-            connection?.close()
+            android.database.sqlite.SQLiteDatabase
+                .openDatabase(dbFile.absolutePath, null, android.database.sqlite.SQLiteDatabase.OPEN_READWRITE)
+                .use { conn ->
+                    conn.execSQL("VACUUM INTO ?", arrayOf(snapshot.absolutePath))
+                }
+        } catch (t: Throwable) {
+            snapshot.delete()
+            throw IllegalStateException("数据库快照失败，已中止备份：${t.message}", t)
         }
         if (!snapshot.exists() || snapshot.length() == 0L) {
             snapshot.delete()
@@ -88,7 +93,7 @@ class MjbBackupManager(private val context: Context) {
         // 2) 统计并打包
         val dao = MomentDatabase.get(context).dao()
         val entryCount = dao.countEntries()
-        val db = MomentDatabase.get(context)
+        val bookCount = dao.countBooks()
         val images = collectImages()
 
         val fileName = "MomentJournal-$STAMP.$EXT"
@@ -107,7 +112,7 @@ class MjbBackupManager(private val context: Context) {
                         appVersion = appVersionName(),
                         createdAt = System.currentTimeMillis(),
                         entryCount = entryCount,
-                        bookCount = db.dao().let { runCatching { dao.countEntries() }.getOrDefault(0) },
+                        bookCount = bookCount,
                         imageCount = images.size,
                     )
                     zip.putNextEntry(ZipEntry(ENTRY_MANIFEST))

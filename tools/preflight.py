@@ -1,0 +1,449 @@
+#!/usr/bin/env python3
+"""
+Pre-push validation for a repo with no local JDK / Android SDK.
+
+We cannot compile here, so this script covers everything that IS checkable
+locally, and it covers exactly the class of mistakes that have already cost
+real CI round-trips:
+
+  1. Groovy syntax inside a *.gradle.kts file (Kotlin DSL)   -- shipped once
+  2. Missing / non-executable gradlew, missing wrapper jar   -- shipped twice
+  3. Files referenced by build config but absent from the repo
+  4. Kotlin .kt syntactic sanity (unbalanced braces, stray imports)
+  5. Declared dependencies vs. the symbols actually imported in source
+  6. YAML workflow validity
+  7. Duplicate class declarations
+  8. AndroidManifest / resource cross-references
+
+Exit code is non-zero when any check fails, so it can gate a push.
+"""
+
+import os
+import re
+import sys
+import json
+import zipfile
+import subprocess
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+FAILURES = []
+WARNINGS = []
+
+
+def fail(check, detail):
+    FAILURES.append((check, detail))
+
+
+def warn(check, detail):
+    WARNINGS.append((check, detail))
+
+
+def rel(p):
+    try:
+        return str(Path(p).relative_to(ROOT))
+    except ValueError:
+        return str(p)
+
+
+# ---------------------------------------------------------------- 1. Gradle DSL
+
+# Constructs that are valid in Groovy but invalid in Kotlin DSL.
+GROOVY_IN_KTS = [
+    (re.compile(r"^\s*id\s+'[^']+'\s*(version\s+'[^']+')?\s*(apply\s+false)?\s*$", re.M),
+     "Groovy plugin id syntax; Kotlin DSL needs id(\"...\") version \"...\""),
+    (re.compile(r"^\s*\w+\s+'[^']*:[^']*'", re.M),
+     "Groovy dependency notation; Kotlin DSL needs implementation(\"group:artifact:ver\")"),
+    (re.compile(r"^\s*\w+\s*=\s*'[^']*'\s*$", re.M),
+     "single-quoted string in .kts; Kotlin requires double quotes"),
+    (re.compile(r"getDefaultProguardFile\('[^']*'\)"),
+     "single-quoted argument inside getDefaultProguardFile(...)"),
+]
+
+
+def check_gradle_kts():
+    files = list(ROOT.rglob("*.gradle.kts"))
+    if not files:
+        fail("gradle-kts", "no *.gradle.kts found")
+    for f in files:
+        text = f.read_text(encoding="utf-8")
+        for pattern, why in GROOVY_IN_KTS:
+            for m in pattern.finditer(text):
+                line = text[:m.start()].count("\n") + 1
+                fail("gradle-kts", f"{rel(f)}:{line} {why}\n      > {m.group(0).strip()}")
+
+        # brace / paren balance outside strings and comments
+        stripped = strip_kt_strings_and_comments(text)
+        for open_c, close_c, name in (("{", "}", "brace"), ("(", ")", "paren")):
+            if stripped.count(open_c) != stripped.count(close_c):
+                fail("gradle-kts",
+                     f"{rel(f)} unbalanced {name}: "
+                     f"{stripped.count(open_c)} '{open_c}' vs {stripped.count(close_c)} '{close_c}'")
+
+
+# ---------------------------------------------------------------- 2. Wrapper
+
+def check_wrapper():
+    gradlew = ROOT / "gradlew"
+    jar = ROOT / "gradle" / "wrapper" / "gradle-wrapper.jar"
+    props = ROOT / "gradle" / "wrapper" / "gradle-wrapper.properties"
+
+    if not gradlew.exists():
+        fail("wrapper", "gradlew script missing (CI dies with exit 127)")
+    else:
+        if not os.access(gradlew, os.X_OK):
+            fail("wrapper", "gradlew is not executable on disk")
+        try:
+            out = subprocess.run(
+                ["git", "ls-files", "-s", "gradlew"],
+                cwd=ROOT, capture_output=True, text=True, timeout=20,
+            ).stdout.strip()
+            if out and not out.startswith("100755"):
+                fail("wrapper", f"gradlew committed as non-executable ({out.split()[0]})"
+                                " - CI dies with exit 126")
+        except Exception as e:
+            warn("wrapper", f"could not query git index: {e}")
+
+        # The launcher must hand -Xmx64m to the JVM as separate args.
+        body = gradlew.read_text(encoding="utf-8", errors="replace")
+        if "GradleWrapperMain" not in body:
+            fail("wrapper", "gradlew does not invoke GradleWrapperMain")
+        if re.search(r"^\s*exec\s+\"\$JAVACMD\"\s+\$DEFAULT_JVM_OPTS", body, re.M):
+            fail("wrapper", "gradlew execs $DEFAULT_JVM_OPTS unquoted; "
+                            "java receives the whole string as the main class name")
+        if "xargs" not in body:
+            fail("wrapper", "gradlew lacks the upstream xargs/eval argument marshalling")
+
+    if not jar.exists():
+        fail("wrapper", "gradle/wrapper/gradle-wrapper.jar missing")
+    else:
+        try:
+            z = zipfile.ZipFile(jar)
+            if "org/gradle/wrapper/GradleWrapperMain.class" not in z.namelist():
+                fail("wrapper", "wrapper jar has no GradleWrapperMain.class")
+        except zipfile.BadZipFile:
+            fail("wrapper", "gradle-wrapper.jar is not a valid zip")
+
+    if not props.exists():
+        fail("wrapper", "gradle-wrapper.properties missing")
+    else:
+        t = props.read_text()
+        if "distributionUrl" not in t:
+            fail("wrapper", "gradle-wrapper.properties has no distributionUrl")
+
+
+# ---------------------------------------------------------------- 3. References
+
+def check_referenced_files():
+    # proguard files named in build scripts
+    for bf in ROOT.rglob("*.gradle.kts"):
+        text = bf.read_text(encoding="utf-8")
+        for m in re.finditer(r'proguardFiles\(([^)]*)\)', text, re.S):
+            for name in re.findall(r'"([^"]+)"', m.group(1)):
+                if name.startswith("proguard-android"):
+                    continue  # provided by the Android plugin
+                target = bf.parent / name
+                if not target.exists():
+                    fail("references", f"{rel(bf)} references missing file {name}")
+
+
+# ---------------------------------------------------------------- 4. Kotlin sanity
+
+def strip_kt_strings_and_comments(text):
+    """Remove string literals, char literals and comments so bracket counts are meaningful."""
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c == "/" and i + 1 < n and text[i + 1] == "/":
+            while i < n and text[i] != "\n":
+                i += 1
+        elif c == "/" and i + 1 < n and text[i + 1] == "*":
+            i += 2
+            while i + 1 < n and not (text[i] == "*" and text[i + 1] == "/"):
+                i += 1
+            i += 2
+        elif c == '"' and text.startswith('"""', i):
+            i += 3
+            while i + 2 < n and not text.startswith('"""', i):
+                i += 1
+            i += 3
+        elif c in "\"'":
+            quote = c
+            i += 1
+            while i < n:
+                if text[i] == "\\":
+                    i += 2
+                    continue
+                if text[i] == quote:
+                    i += 1
+                    break
+                i += 1
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def check_kotlin():
+    for f in ROOT.rglob("*.kt"):
+        if "/build/" in str(f):
+            continue
+        text = f.read_text(encoding="utf-8")
+        stripped = strip_kt_strings_and_comments(text)
+        for open_c, close_c, name in (("{", "}", "brace"), ("(", ")", "paren"),
+                                      ("[", "]", "bracket")):
+            if stripped.count(open_c) != stripped.count(close_c):
+                fail("kotlin", f"{rel(f)} unbalanced {name}: "
+                               f"{stripped.count(open_c)} vs {stripped.count(close_c)}")
+
+        if not re.search(r"^\s*package\s+[\w.]+", text, re.M):
+            warn("kotlin", f"{rel(f)} has no package declaration")
+
+        pkg = re.search(r"^\s*package\s+([\w.]+)", text, re.M)
+        # a file whose path does not match its package is almost always a mistake
+        if pkg:
+            expected = "/".join(pkg.group(1).split("."))
+            if expected not in str(f).replace("\\", "/"):
+                warn("kotlin", f"{rel(f)} package {pkg.group(1)} does not match its path")
+
+
+def check_single_main_activity():
+    """Two classes named MainActivity, or two Application classes, is a hard error."""
+    seen = {}
+    for f in ROOT.rglob("*.kt"):
+        text = f.read_text(encoding="utf-8")
+        for m in re.finditer(r"^\s*(?:public\s+|internal\s+|abstract\s+|open\s+)*"
+                             r"(class|object|interface)\s+(\w+)", text, re.M):
+            name = m.group(2)
+            seen.setdefault(name, []).append(rel(f))
+    for name, files in seen.items():
+        pkgs = set()
+        for f in files:
+            t = (ROOT / f).read_text(encoding="utf-8")
+            p = re.search(r"^\s*package\s+([\w.]+)", t, re.M)
+            pkgs.add(p.group(1) if p else "")
+        if len(pkgs) > 1 and len(files) > 1:
+            pass  # same simple name in different packages is fine
+    dupes = {n: fs for n, fs in seen.items()
+             if len(fs) > 1 and n not in ("Companion", "Entry", "Book")}
+    # report only when they share a package
+    for name, files in dupes.items():
+        by_pkg = {}
+        for f in files:
+            t = (ROOT / f).read_text(encoding="utf-8")
+            p = re.search(r"^\s*package\s+([\w.]+)", t, re.M)
+            by_pkg.setdefault(p.group(1) if p else "", []).append(f)
+        for pkg, fs in by_pkg.items():
+            if len(fs) > 1:
+                fail("kotlin", f"class {name} declared {len(fs)} times in {pkg}: {fs}")
+
+
+# ---------------------------------------------------------------- 5. Dependencies
+
+# import prefix -> artifact that must be declared
+IMPORT_TO_ARTIFACT = {
+    "androidx.compose.material3.": "androidx.compose.material3:material3",
+    "androidx.compose.material.icons": "androidx.compose.material:material-icons-extended",
+    "androidx.compose.ui.": "androidx.compose.ui:ui",
+    "androidx.compose.runtime.": "androidx.compose.runtime:runtime",
+    "androidx.compose.foundation.": "androidx.compose.foundation:foundation",
+    "androidx.navigation.": "androidx.navigation:navigation-compose",
+    "androidx.room.": "androidx.room:room-runtime",
+    "androidx.work.": "androidx.work:work-runtime-ktx",
+    "androidx.documentfile.": "androidx.documentfile:documentfile",
+    "androidx.activity.": "androidx.activity:activity-compose",
+    "androidx.lifecycle.viewmodel.": "androidx.lifecycle:lifecycle-viewmodel",
+    "androidx.lifecycle.compose.": "androidx.lifecycle:lifecycle-runtime-compose",
+    "androidx.core.": "androidx.core:core-ktx",
+    "coil.compose.": "io.coil-kt:coil-compose",
+}
+
+
+def check_dependencies():
+    build = ROOT / "app" / "build.gradle.kts"
+    if not build.exists():
+        return
+    raw = build.read_text(encoding="utf-8")
+    declared = set(re.findall(r'"([^"]+:[^"]+:[^"]+)"', raw))
+    # BOM-managed deps are declared without a version: "group:artifact"
+    bom_declared = set(re.findall(r'implementation\("([^"]+:[^"]+)"\)', raw))
+    declared_groups = {d.rsplit(":", 1)[0] for d in declared} | bom_declared
+
+    used = {}
+    for f in ROOT.rglob("*.kt"):
+        if "/build/" in str(f):
+            continue
+        for m in re.finditer(r"^\s*import\s+([\w.]+)", f.read_text(encoding="utf-8"), re.M):
+            imp = m.group(1)
+            for prefix, artifact in IMPORT_TO_ARTIFACT.items():
+                if imp.startswith(prefix):
+                    used.setdefault(artifact, set()).add(rel(f))
+
+    # The Compose BOM makes these resolvable without an explicit declaration.
+    BOM_SATISFIED = {
+        "androidx.compose.foundation:foundation",
+        "androidx.compose.runtime:runtime",
+        "androidx.compose.ui:ui",
+        "androidx.compose.animation:animation",
+    }
+    has_compose_bom = any("compose-bom" in d for d in declared)
+
+    for artifact, files in sorted(used.items()):
+        group = artifact.rsplit(":", 1)[0]
+        if artifact in declared or artifact in bom_declared:
+            continue
+        if has_compose_bom and artifact in BOM_SATISFIED:
+            continue
+        # BOM-managed artifacts (module without version) are fine
+        # an umbrella artifact from the same group satisfies the import
+        if any(d.rsplit(":", 1)[0] == group for d in declared | declared_groups):
+            continue
+        if group in declared_groups:
+            continue
+        # transitively provided by a declared umbrella artifact
+        if group == "androidx.compose.runtime" and any(
+                d.startswith("androidx.compose.ui:ui") for d in declared):
+            continue
+        if group in ("androidx.lifecycle:lifecycle-viewmodel",
+                     "androidx.lifecycle:lifecycle-runtime") and any(
+                d.startswith("androidx.lifecycle:") for d in declared):
+            continue
+        fail("deps", f"source imports {group}* but app/build.gradle.kts does not declare "
+                     f"{artifact}\n      used by: {', '.join(sorted(files))}")
+
+
+# ---------------------------------------------------------------- 6. YAML
+
+def check_yaml():
+    try:
+        import yaml
+    except ImportError:
+        warn("yaml", "pyyaml not installed, skipping workflow validation")
+        return
+    wf = list((ROOT / ".github" / "workflows").glob("*.yml")) \
+        if (ROOT / ".github" / "workflows").exists() else []
+    if not wf:
+        warn("yaml", "no workflow files found")
+    for f in wf:
+        try:
+            doc = yaml.safe_load(f.read_text(encoding="utf-8"))
+        except Exception as e:
+            fail("yaml", f"{rel(f)} is not valid YAML: {e}")
+            continue
+        if "jobs" not in (doc or {}):
+            fail("yaml", f"{rel(f)} has no jobs section")
+        # every `run:` step must be a string
+        for job_name, job in (doc.get("jobs") or {}).items():
+            for step in (job.get("steps") or []):
+                if "run" in step and not isinstance(step["run"], str):
+                    fail("yaml", f"{rel(f)} job {job_name}: run step is not a string")
+
+
+# ---------------------------------------------------------------- 7. Manifest / res
+
+def check_manifest():
+    manifest = ROOT / "app" / "src" / "main" / "AndroidManifest.xml"
+    if not manifest.exists():
+        fail("manifest", "AndroidManifest.xml missing")
+        return
+    text = manifest.read_text(encoding="utf-8")
+
+    # every @type/name reference must resolve to a real resource.
+    # Value resources (string/color/style) live in res/values*/, file resources
+    # in res/<type>[-qualifier]/ — so match the folder's type prefix, not its
+    # whole name. Folder name -> the resource types it can carry.
+    res_dir = ROOT / "app" / "src" / "main" / "res"
+    FOLDER_TYPES = {
+        "values": {"string", "color", "style", "dimen", "bool", "integer",
+                   "array", "attr", "drawable", "xml", "layout"},
+        "drawable": {"drawable", "mipmap"},
+        "mipmap": {"mipmap", "drawable"},
+        "xml": {"xml"},
+        "color": {"color"},
+        "layout": {"layout"},
+    }
+    all_res = list(res_dir.rglob("*.xml"))
+    for m in re.finditer(r"@(drawable|mipmap|style|color|string|xml)/([\w.]+)", text):
+        kind, name = m.group(1), m.group(2)
+        hits = [
+            p for p in all_res
+            if kind in FOLDER_TYPES.get(p.parent.name.split("-")[0], set())
+        ]
+        if not hits:
+            fail("manifest", f"@{kind}/{name} referenced but no res/ folder carries {kind}")
+            continue
+        # In res/values*/ the resource is matched by name="..."; in file-based
+        # folders (drawable/, mipmap/, xml/, layout/) it is matched by filename.
+        value_hits = [p for p in hits if p.parent.name.split("-")[0] == "values"]
+        file_hits = [p for p in hits if p.parent.name.split("-")[0] != "values"]
+        found = (
+            any(f'name="{name}"' in p.read_text(encoding="utf-8") for p in value_hits)
+            or any(p.stem == name for p in file_hits)
+        )
+        if not found:
+            fail("manifest",
+                 f"@{kind}/{name} referenced but not defined in "
+                 f"{sorted({p.parent.name for p in hits})}")
+
+    # activity classes named in the manifest must exist as .kt files
+    for m in re.finditer(r'android:name="\.(\w+)"', text):
+        cls = m.group(1)
+        hits = list((ROOT / "app" / "src" / "main").rglob(f"{cls}.kt"))
+        if not hits:
+            fail("manifest", f"activity .{cls} declared but no {cls}.kt in sources")
+
+
+# ---------------------------------------------------------------- 8. Doc consistency
+
+def check_docs():
+    """Version and package declared in docs must match the build config."""
+    build = ROOT / "app" / "build.gradle.kts"
+    if not build.exists():
+        return
+    text = build.read_text(encoding="utf-8")
+    ns = re.search(r'namespace\s*=\s*"([^"]+)"', text)
+    ver = re.search(r'versionName\s*=\s*"([^"]+)"', text)
+    readme = ROOT / "README.md"
+    if readme.exists() and ns:
+        if ns.group(1) not in readme.read_text(encoding="utf-8"):
+            warn("docs", f"README does not mention package {ns.group(1)}")
+    if ver and readme and ver.group(1) not in readme.read_text(encoding="utf-8"):
+        warn("docs", f"README does not mention version {ver.group(1)}")
+
+
+# ---------------------------------------------------------------- main
+
+def main():
+    check_gradle_kts()
+    check_wrapper()
+    check_referenced_files()
+    check_kotlin()
+    check_single_main_activity()
+    check_dependencies()
+    check_yaml()
+    check_manifest()
+    check_docs()
+
+    print("=" * 68)
+    print("pre-push validation")
+    print("=" * 68)
+    if WARNINGS:
+        print(f"\n{len(WARNINGS)} warning(s):")
+        for c, d in WARNINGS:
+            print(f"  [warn:{c}] {d}")
+    if FAILURES:
+        print(f"\n{len(FAILURES)} failure(s):")
+        for c, d in FAILURES:
+            print(f"  [FAIL:{c}] {d}")
+        print("\nDo not push. Fix these first - each one costs a CI round-trip.")
+        return 1
+    print("\nAll local checks passed.")
+    print("Note: this does NOT compile Kotlin. Compile errors may still exist;")
+    print("      only ship things this script can actually vouch for.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

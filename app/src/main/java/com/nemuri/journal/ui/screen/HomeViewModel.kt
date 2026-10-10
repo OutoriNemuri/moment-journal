@@ -7,11 +7,12 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.nemuri.journal.data.db.Book
 import com.nemuri.journal.data.db.Entry
 import com.nemuri.journal.data.repo.MomentRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -24,13 +25,17 @@ class HomeViewModel(private val repo: MomentRepository) : ViewModel() {
     val books: StateFlow<List<Book>> = repo.observeBooks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    @Suppress("OPT_IN_USAGE")
-    val entries: StateFlow<List<Entry>> = combine(
-        repo.observeEntries(),
-        _selectedBookId,
-    ) { all, bookId ->
-        if (bookId == null) all else all.filter { it.bookId == bookId }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /**
+     * 当前可见的日记。
+     *
+     * 过滤交给 SQL（[MomentRepository.observeEntriesInBook]），而不是把整张表
+     * 读进内存再 filter —— 日记攒到几千条时差别是数量级的。
+     * 用 flatMapLatest 跟随选中的日记本切换查询。
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val entries: StateFlow<List<Entry>> = _selectedBookId
+        .flatMapLatest { bookId -> repo.observeEntriesInBook(bookId) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _drawerOpen = MutableStateFlow(false)
     val drawerOpen: StateFlow<Boolean> = _drawerOpen.asStateFlow()

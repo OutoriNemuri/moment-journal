@@ -1,6 +1,5 @@
 package com.nemuri.journal.ui.screen
 
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nemuri.journal.data.db.Entry
@@ -12,7 +11,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 /**
@@ -31,16 +29,13 @@ import kotlinx.coroutines.launch
 @OptIn(FlowPreview::class)
 class EditorViewModel(
     private val repo: MomentRepository,
-    savedStateHandle: SavedStateHandle,
+    private val entryId: Long,
 ) : ViewModel() {
 
     companion object {
         /** 写库防抖窗口。太小则退化成逐键写入，太大则丢字窗口变长。 */
         const val SAVE_DEBOUNCE_MS = 400L
-        const val ARG_ENTRY_ID = "entryId"
     }
-
-    private val entryId: Long = savedStateHandle.get<Long>(ARG_ENTRY_ID) ?: -1L
 
     private val _title = MutableStateFlow("")
     val title: StateFlow<String> = _title.asStateFlow()
@@ -66,7 +61,10 @@ class EditorViewModel(
 
     init {
         viewModelScope.launch {
-            val loaded = repo.findEntry(entryId) ?: return@launch
+            val loaded = repo.findEntry(entryId) ?: run {
+                _saveState.value = SaveState.MISSING
+                return@launch
+            }
             _title.value = loaded.title
             _body.value = loaded.body
             _createdAt.value = loaded.createdAt
@@ -105,7 +103,14 @@ class EditorViewModel(
 
     private suspend fun persist() {
         val draft = pending ?: return
-        val current = repo.findEntry(entryId) ?: return
+        val current = repo.findEntry(entryId)
+        if (current == null) {
+            // 条目在编辑期间被删除（例如从列表长按删除）。绝不能静默丢弃，
+            // 否则用户会以为改动保存了，实际上整篇日记连同内容一起消失。
+            _saveState.value = SaveState.MISSING
+            pending = null
+            return
+        }
         repo.saveEntry(current.copy(title = draft.title, body = draft.body))
         // 只有在此期间没有新改动时才清空待写内容，否则会把新输入一起丢掉
         if (pending == draft) {
@@ -116,7 +121,12 @@ class EditorViewModel(
 
     private data class Draft(val title: String, val body: String)
 
-    enum class SaveState { SAVED, PENDING }
+    enum class SaveState {
+        SAVED,
+        PENDING,
+        /** 条目不存在（已被删除，或 entryId 无效）。此时不应静默当空日记处理。 */
+        MISSING,
+    }
 }
 
 /** 供列表界面复用的摘要生成。 */

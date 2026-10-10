@@ -11,10 +11,6 @@ interface MomentDao {
 
     // ---------- 日记 ----------
 
-    /** 全部日记，时间倒序。 */
-    @Query("SELECT * FROM entries ORDER BY created_at DESC")
-    fun observeEntries(): Flow<List<Entry>>
-
     /** 按日记本过滤；[bookId] 为 null 时返回全部。 */
     @Query("SELECT * FROM entries WHERE (:bookId IS NULL OR book_id = :bookId) ORDER BY created_at DESC")
     fun observeEntriesInBook(bookId: Long?): Flow<List<Entry>>
@@ -53,4 +49,7 @@ interface MomentDao {
 
     @Query("SELECT COUNT(*) FROM entries")
     suspend fun countEntries(): Int
+
+    @Query("SELECT COUNT(*) FROM books")
+    suspend fun countBooks(): Int
 }

@@ -6,9 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +26,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.Done
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -39,8 +40,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -53,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nemuri.journal.md.MomentMarkdown
+import com.nemuri.journal.ui.component.MdBody
 import com.nemuri.journal.util.ImageStore
 import com.nemuri.journal.util.TimeFormat
 import kotlinx.coroutines.launch
@@ -81,6 +84,8 @@ fun EditorScreen(
     val body by viewModel.body.collectAsStateWithLifecycle()
     val createdAt by viewModel.createdAt.collectAsStateWithLifecycle()
     val saveState by viewModel.saveState.collectAsStateWithLifecycle()
+
+    var showPreview by remember { mutableStateOf(false) }
 
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -112,6 +117,20 @@ fun EditorScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        // 切换前先落库，避免预览看到的是旧内容
+                        scope.launch { viewModel.flushNow() }
+                        showPreview = !showPreview
+                    }) {
+                        Icon(
+                            imageVector = if (showPreview) {
+                                Icons.Outlined.Edit
+                            } else {
+                                Icons.Outlined.Visibility
+                            },
+                            contentDescription = if (showPreview) "编辑" else "预览",
+                        )
+                    }
                     SaveIndicator(saveState)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -164,35 +183,43 @@ fun EditorScreen(
 
                 Spacer(Modifier.height(12.dp))
 
-                // 正文直接编辑 Markdown 源文本。
-                // 渲染（样式、嵌入的图片与时间）由 MdBody 负责，见文件末尾说明。
-                BasicTextField(
-                    value = body,
-                    onValueChange = viewModel::onBodyChange,
-                    textStyle = TextStyle(
-                        fontSize = 17.sp,
-                        lineHeight = 28.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.fillMaxWidth().height(320.dp),
-                    decorationBox = { inner ->
-                        if (body.isEmpty()) {
-                            Text(
-                                "写点什么…",
-                                style = TextStyle(
-                                    fontSize = 17.sp,
-                                    lineHeight = 28.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                ),
-                            )
-                        }
-                        inner()
-                    },
-                )
+                if (showPreview) {
+                    // 预览模式：渲染后的样式与嵌入。编辑模式直接改 Markdown 源文本，
+                    // 因此光标永远进得去，不存在"富文本视图无法输入"的问题。
+                    MdBody(
+                        source = body,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                    )
+                } else {
+                    BasicTextField(
+                        value = body,
+                        onValueChange = viewModel::onBodyChange,
+                        textStyle = TextStyle(
+                            fontSize = 17.sp,
+                            lineHeight = 28.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.fillMaxWidth().height(320.dp),
+                        decorationBox = { inner ->
+                            if (body.isEmpty()) {
+                                Text(
+                                    "写点什么…",
+                                    style = TextStyle(
+                                        fontSize = 17.sp,
+                                        lineHeight = 28.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    ),
+                                )
+                            }
+                            inner()
+                        },
+                    )
+                }
             }
 
             QuickInputBar(
+                enabled = saveState != EditorViewModel.SaveState.MISSING,
                 onInsertTime = {
                     viewModel.onBodyChange(
                         body + MomentMarkdown.timeToken(TimeFormat.isoNow()) + " "
@@ -206,28 +233,29 @@ fun EditorScreen(
 
 @Composable
 private fun SaveIndicator(state: EditorViewModel.SaveState) {
+    val (label, icon, tint) = when (state) {
+        EditorViewModel.SaveState.SAVED ->
+            Triple("已保存", Icons.Outlined.Done, MaterialTheme.colorScheme.onSurfaceVariant)
+        EditorViewModel.SaveState.PENDING ->
+            Triple("保存中…", Icons.Outlined.Bolt, MaterialTheme.colorScheme.onSurfaceVariant)
+        // 条目已被删除：必须让用户看见，否则他会以为内容还存着
+        EditorViewModel.SaveState.MISSING ->
+            Triple("日记已被删除", Icons.Outlined.Delete, MaterialTheme.colorScheme.error)
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(end = 12.dp),
     ) {
         AnimatedVisibility(visible = true) {
             Icon(
-                imageVector = if (state == EditorViewModel.SaveState.SAVED) {
-                    Icons.Outlined.Done
-                } else {
-                    Icons.Outlined.Bolt
-                },
+                imageVector = icon,
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = tint,
             )
         }
         Spacer(Modifier.width(6.dp))
-        Text(
-            if (state == EditorViewModel.SaveState.SAVED) "已保存" else "保存中…",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text(label, style = MaterialTheme.typography.labelMedium, color = tint)
     }
 }
 
@@ -238,6 +266,7 @@ private fun SaveIndicator(state: EditorViewModel.SaveState) {
  */
 @Composable
 private fun QuickInputBar(
+    enabled: Boolean,
     onInsertTime: () -> Unit,
     onPickImage: () -> Unit,
 ) {
@@ -251,8 +280,8 @@ private fun QuickInputBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Start,
         ) {
-            QuickAction(Icons.Filled.Schedule, "时间", onInsertTime)
-            QuickAction(Icons.Filled.Image, "图片", onPickImage)
+            QuickAction(Icons.Filled.Schedule, "时间", enabled, onInsertTime)
+            QuickAction(Icons.Filled.Image, "图片", enabled, onPickImage)
         }
     }
 }
@@ -261,11 +290,10 @@ private fun QuickInputBar(
 private fun QuickAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    Box {
-        IconButton(onClick = onClick) {
-            Icon(icon, contentDescription = label)
-        }
+    IconButton(onClick = onClick, enabled = enabled) {
+        Icon(icon, contentDescription = label)
     }
 }

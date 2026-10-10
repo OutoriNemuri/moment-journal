@@ -5,8 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -94,11 +92,8 @@ private fun JournalApp(repository: MomentRepository) {
 private fun editorFactory(repository: MomentRepository, entryId: Long): ViewModelProvider.Factory =
     viewModelFactory {
         initializer {
-            EditorViewModel(
-                repo = repository,
-                savedStateHandle = androidx.lifecycle.SavedStateHandle(
-                    mapOf(EditorViewModel.ARG_ENTRY_ID to entryId)
-                ),
-            )
+            // entryId 来自导航参数，这里是它进入 ViewModel 的唯一通道。
+            // 不再依赖 SavedStateHandle 自动注入 —— 手动构造更直白，也少一处可能不同步的状态。
+            EditorViewModel(repo = repository, entryId = entryId)
         }
     }

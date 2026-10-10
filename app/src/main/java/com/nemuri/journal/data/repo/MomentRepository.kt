@@ -13,8 +13,6 @@ import kotlinx.coroutines.flow.Flow
  */
 class MomentRepository(private val dao: MomentDao) {
 
-    fun observeEntries(): Flow<List<Entry>> = dao.observeEntries()
-
     fun observeEntriesInBook(bookId: Long?): Flow<List<Entry>> = dao.observeEntriesInBook(bookId)
 
     fun observeEntry(id: Long): Flow<Entry?> = dao.observeEntry(id)

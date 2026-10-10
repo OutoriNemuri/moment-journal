@@ -24,6 +24,11 @@ jobs:
       - name: 确保 gradlew 可执行
         run: chmod +x ./gradlew
 
+      # 本地就能做的校验（Kotlin DSL 语法、wrapper 完整性、依赖与 import 对照、
+      # 资源引用、YAML）。放在最前面是为了在昂贵的 Gradle 启动之前就失败。
+      - name: 静态预检
+        run: python3 tools/preflight.py
+
       - name: 配置 JDK 17
         uses: actions/setup-java@v4
         with:
