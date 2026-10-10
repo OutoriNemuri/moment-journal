@@ -4,7 +4,7 @@
 
 ## 状态
 
-**0.2 (1) Beta — 基本功能开发中。**
+**0.2.1 (1) Beta — 主界面改为编辑器。**
 
 CI 全绿，产出 `moment-journal-debug.apk`。Build 1 完成「录、存、备」三个主干，
 Build 2 补齐应用图标。构建在 GitHub Actions 完成（本机无 JDK / Android SDK）。
@@ -16,7 +16,7 @@ Build 2 补齐应用图标。构建在 GitHub Actions 完成（本机无 JDK / A
 | 应用名 | 时刻日记 / Moment Journal / 瞬間ジャーナル |
 | 包名 | `com.nemuri.journal` |
 | minSdk / targetSdk | 28 (Android 9) / 35 (Android 15) |
-| 当前版本 | `0.2 (1)` Beta |
+| 当前版本 | `0.2.1 (1)` Beta |
 
 ## 0.1 Build 1 范围
 

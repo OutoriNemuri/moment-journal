@@ -82,11 +82,21 @@ private fun EditorAction.icon(): ImageVector = when (this) {
 fun EditorActionSheet(
     onDismiss: () -> Unit,
     onAction: (EditorAction) -> Unit,
+    /**
+     * 是否已打开一篇日记。
+     *
+     * 为 false 时（占位状态）只显示 [EditorAction.BACKUP] ——
+     * 其余四项都需要一篇已打开的日记，显示出来点了也没意义。
+     * 备份与日记无关，因此在任何状态下都可用。
+     */
+    entryOpen: Boolean,
 ) {
     val sheetState = rememberModalBottomSheetState()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         SheetBody(title = stringResource(R.string.action_sheet_title)) {
-            EditorAction.entries.forEach { action ->
+            EditorAction.entries
+                .filter { entryOpen || it == EditorAction.BACKUP }
+                .forEach { action ->
                 ListItem(
                     headlineContent = { Text(stringResource(action.labelRes)) },
                     supportingContent = {

@@ -14,10 +14,10 @@ android {
         minSdk = 28
         targetSdk = 35
         // 版本号形如 <次版本> (N)：versionName 给人看，versionCode 单调递增。
-        // 0.1 (1) = 首个可安装版本，0.1 (2) = 图标 + 0.2 前期改动，
-        // 0.2 (1) = 基本功能。见 docs/CHANGELOG.md
-        versionCode = 3
-        versionName = "0.2 (1)"
+        // 0.1 (1) 首个可安装版本 · 0.1 (2) 图标 + 0.2 前期改动 ·
+        // 0.2 (1) 基本功能 · 0.2.1 (1) 主界面改为编辑器。见 docs/CHANGELOG.md
+        versionCode = 4
+        versionName = "0.2.1 (1)"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

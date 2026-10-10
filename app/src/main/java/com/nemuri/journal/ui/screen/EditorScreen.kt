@@ -22,10 +22,10 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
@@ -84,7 +84,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun EditorScreen(
     viewModel: EditorViewModel,
-    onBack: () -> Unit,
+    /** 关掉当前日记，回到占位状态。编辑器是主界面，这里不是「返回上一层」。 */
+    onCloseEntry: () -> Unit,
+    /** 打开侧栏。它与功能抽屉同在顶栏，同级。 */
+    onOpenSidebar: () -> Unit = {},
     /** 进入查找页。三档范围由查找页自己切换。 */
     onOpenSearch: (SearchViewModel.Scope) -> Unit = {},
     /** 进入备份设置。备份入口放在功能抽屉里，与其余操作同级。 */
@@ -160,14 +163,20 @@ fun EditorScreen(
         pendingTextExport = null
     }
 
-    // 退出前把未落库的草稿推一次。返回手势与返回按钮共用这一条路径。
-    val leave: () -> Unit = {
+    /**
+     * 关闭当前日记。
+     *
+     * 先把未落库的草稿推一次再离开 —— 400ms 的防抖窗口内用户可能刚敲完就关。
+     * 系统返回手势也走这条路径：编辑器是主界面，返回的语义是
+     * 「收起当前这篇，回到占位」，而不是「退出应用」。
+     */
+    val closeEntry: () -> Unit = {
         scope.launch {
             viewModel.flushNow()
-            onBack()
+            onCloseEntry()
         }
     }
-    BackHandler { leave() }
+    BackHandler { closeEntry() }
 
     Scaffold(
         snackbarHost = {
@@ -179,8 +188,13 @@ fun EditorScreen(
             TopAppBar(
                 title = {},
                 navigationIcon = {
-                    IconButton(onClick = leave) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
+                    // 左上角是侧栏按钮 —— 与右上角的功能抽屉同级，
+                    // 而不是「返回」：编辑器已是主界面，没有上一层可退。
+                    IconButton(onClick = onOpenSidebar) {
+                        Icon(
+                            Icons.Outlined.Menu,
+                            contentDescription = stringResource(R.string.home_open_sidebar),
+                        )
                     }
                 },
                 actions = {
@@ -307,6 +321,7 @@ fun EditorScreen(
     if (showActionSheet) {
         EditorActionSheet(
             onDismiss = { showActionSheet = false },
+            entryOpen = true,
             onAction = { action ->
                 showActionSheet = false
                 when (action) {
