@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -53,6 +54,9 @@ fun BackupSettingsScreen(
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val configured by viewModel.configured.collectAsStateWithLifecycle()
+    val archives by viewModel.archives.collectAsStateWithLifecycle()
+    val archivesLoading by viewModel.archivesLoading.collectAsStateWithLifecycle()
+    var showRestoreList by remember { mutableStateOf(false) }
 
     var directoryUsable by remember { mutableStateOf(true) }
     var pendingRestore by remember { mutableStateOf<Pair<android.net.Uri, MjbManifest>?>(null) }
@@ -153,7 +157,13 @@ fun BackupSettingsScreen(
             Spacer(Modifier.height(8.dp))
 
             OutlinedButton(
-                onClick = { archivePicker.launch(arrayOf("application/zip", "*/*")) },
+                onClick = {
+                    // 直接列出本机备份，不必每次从文件框架里翻找。
+                    // 「从其他位置选择」作为次要入口保留 —— 归档可能来自
+                    // 另一台设备、聊天软件或网盘，不只是本机生成的。
+                    showRestoreList = true
+                    viewModel.loadArchives()
+                },
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -165,6 +175,52 @@ fun BackupSettingsScreen(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            if (showRestoreList) {
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    stringResource(R.string.restore_list_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+
+                when {
+                    archivesLoading -> Text(
+                        stringResource(R.string.restore_loading),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+
+                    archives.isEmpty() -> Text(
+                        stringResource(R.string.restore_list_empty),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    else -> archives.forEach { entry ->
+                        ArchiveRow(
+                            entry = entry,
+                            // 读不出清单的归档单独标记为不可选，
+                            // 不影响其他项 —— 一个坏文件不该让整列失效
+                            enabled = entry.manifest != null,
+                            onClick = {
+                                entry.manifest?.let { m -> pendingRestore = entry.uri to m }
+                            },
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { archivePicker.launch(arrayOf("application/zip", "*/*")) },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.restore_pick_other))
+                }
+            }
 
             message?.let {
                 Spacer(Modifier.height(20.dp))
@@ -211,6 +267,46 @@ fun BackupSettingsScreen(
                     Text(stringResource(R.string.common_cancel))
                 }
             },
+        )
+    }
+}
+
+/** 归档列表中的一项。 */
+@Composable
+private fun ArchiveRow(
+    entry: com.nemuri.journal.backup.MjbBackupManager.ArchiveEntry,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 8.dp),
+    ) {
+        Text(
+            text = entry.name,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(2.dp))
+        val m = entry.manifest
+        Text(
+            text = if (m == null) {
+                // 损坏的归档要说明原因，而不是只显示一个灰条
+                stringResource(R.string.restore_item_unreadable)
+            } else {
+                stringResource(
+                    R.string.restore_item_summary,
+                    m.entryCount,
+                    android.text.format.Formatter.formatShortFileSize(context, entry.sizeBytes),
+                )
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.error,
         )
     }
 }

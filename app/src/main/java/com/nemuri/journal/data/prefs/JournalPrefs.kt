@@ -55,12 +55,17 @@ class JournalPrefs(context: Context) {
             if (value == null) remove(KEY_LAST_BACKUP_ERROR) else putString(KEY_LAST_BACKUP_ERROR, value)
         }
 
-    /** 用户是否已在首启引导中做过选择（无论选「指定目录」还是「稍后再说」）。 */
-    var onboardingDone: Boolean
-        get() = prefs.getBoolean(KEY_ONBOARDING, false)
-        set(value) = prefs.edit { putBoolean(KEY_ONBOARDING, value) }
-
-    /** 备份是否已配置可用。 */
+    /**
+     * 备份是否**已配置**。
+     *
+     * 注意这只是"用户指定过位置"，**不代表该位置当前可用** ——
+     * 用户可能撤销授权、删除文件夹或卸载存储卡。
+     * 「是否可用」需要实际访问目录来判断，见
+     * [com.nemuri.journal.backup.BackupScheduler.isDirectoryUsable]。
+     *
+     * 曾经用一个 `onboardingDone` 标记记录"用户是否做过选择"，
+     * 它与这个判断表达的是同一件事却存了两份，已删除。
+     */
     val backupConfigured: Boolean
         get() = backupTreeUri != null
 
@@ -70,7 +75,6 @@ class JournalPrefs(context: Context) {
         private const val KEY_BACKUP_URI = "backup_tree_uri"
         private const val KEY_LAST_BACKUP_AT = "last_backup_at"
         private const val KEY_LAST_BACKUP_ERROR = "last_backup_error"
-        private const val KEY_ONBOARDING = "onboarding_done"
 
         const val NO_BOOK = -1L
     }

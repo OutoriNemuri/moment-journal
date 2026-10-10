@@ -13,7 +13,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -21,11 +23,14 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.nemuri.journal.R
 import com.nemuri.journal.md.InlineSpan
 import com.nemuri.journal.md.MarkdownLine
 import com.nemuri.journal.md.MomentMarkdownParser
+import com.nemuri.journal.util.ImageMetrics
 import com.nemuri.journal.util.ImageStore
 import com.nemuri.journal.util.TimeFormat
 
@@ -130,18 +135,43 @@ private fun InlineThumbnail(relativePath: String) {
     if (file == null) {
         // 文件缺失（被外部删除、恢复不完整）时显示占位，既不崩溃也不静默隐藏
         Text(
-            "[图片缺失: $relativePath]",
+            stringResource(R.string.export_missing_image, relativePath),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.error,
             modifier = Modifier.padding(horizontal = 4.dp),
         )
         return
     }
+
+    // 按图片自身的宽高比算高度，而不是给一个固定值。
+    // 此前写死 180dp，配合 FillWidth 会把竖图裁成一条 —— 所有图片都错，
+    // 只是横图看起来没那么明显。
+    val widthPx = with(LocalDensity.current) {
+        LocalConfiguration.current.screenWidthDp.dp.toPx() - 80f
+    }
+    val measured = remember(file) { ImageMetrics.heightForWidth(file, widthPx) }
+    val capped = remember(file) { ImageMetrics.isHeightCapped(file, widthPx) }
+
+    if (measured == null) {
+        // 尺寸读不出来（文件损坏、非图片）时给出占位，而不是画一个瞎猜的高度
+        Text(
+            stringResource(R.string.export_missing_image, relativePath),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+        return
+    }
+
     AsyncImage(
         model = file,
         contentDescription = null,
-        contentScale = ContentScale.FillWidth,
-        modifier = Modifier.fillMaxWidth().height(180.dp).padding(vertical = 4.dp),
+        // 被限高时用 Fit 保证完整可见；未限高时 FillWidth 正好铺满宽度
+        contentScale = if (capped) ContentScale.Fit else ContentScale.FillWidth,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(with(LocalDensity.current) { measured.toDp() })
+            .padding(vertical = 4.dp),
     )
 }
 

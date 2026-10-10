@@ -23,6 +23,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.nemuri.journal.R
 import com.nemuri.journal.data.db.Book
@@ -42,6 +45,9 @@ import com.nemuri.journal.ui.screen.EditorViewModel
 import com.nemuri.journal.ui.screen.HomeViewModel
 import com.nemuri.journal.ui.screen.SearchScreen
 import com.nemuri.journal.ui.screen.SearchViewModel
+import com.nemuri.journal.ui.screen.BackupBanner
+import com.nemuri.journal.ui.screen.Level
+import com.nemuri.journal.ui.screen.SettingsScreen
 import com.nemuri.journal.ui.theme.MomentJournalTheme
 
 class MainActivity : ComponentActivity() {
@@ -93,6 +99,7 @@ class MainActivity : ComponentActivity() {
  */
 private object Routes {
     const val EDITOR = "editor?entryId={entryId}"
+    const val SETTINGS = "settings"
     const val BACKUP = "backup"
     const val SEARCH = "search/{entryId}/{bookId}/{scope}"
 
@@ -121,13 +128,34 @@ private fun JournalApp(
     )
     val onboardingVisible by backupVm.onboardingVisible.collectAsStateWithLifecycle()
 
-    // 首启引导盖在整个应用之上：这是唯一能保证用户看见备份入口的时机。
+    // 备份目录是强制的：目录不可用时不进入应用。
+    //
+    // 判据是「目录当前能否使用」而不是「用户是否点过按钮」——
+    // 用户可能在系统设置里撤销授权，那样应用必须重新引导，
+    // 而不是进去之后让备份静默失败。
     if (onboardingVisible) {
         BackupOnboardingScreen(viewModel = backupVm, onFinished = {})
         return
     }
 
     val navController = rememberNavController()
+    val backupError by backupVm.errorState.collectAsStateWithLifecycle()
+    val backupErrorDetails by backupVm.errorDetails.collectAsStateWithLifecycle()
+    val backupDismissed by backupVm.dismissed.collectAsStateWithLifecycle()
+
+    Column(Modifier.fillMaxSize()) {
+    // 备份状态横幅。置于顶栏之上、整宽 ——
+    // 备份失败是持续状态而非一次性事件，浮动提示会自动消失，
+    // 用户没看见就永远错过了。
+    if (backupError != null && !backupDismissed) {
+        BackupBanner(
+            level = Level.Warning,
+            message = stringResource(R.string.backup_warning_failed, backupError.orEmpty()),
+            details = backupErrorDetails,
+            onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+            onDismiss = { backupVm.dismissError() },
+        )
+    }
 
     NavHost(
         navController = navController,
@@ -192,7 +220,6 @@ private fun JournalApp(
                         homeVm.createEntry { newId -> switchEntry(newId) }
                     },
                     onOpenSidebar = openSidebar,
-                    onOpenBackupSettings = { navController.navigate(Routes.BACKUP) },
                 )
             } else {
                 val vm: EditorViewModel = viewModel(
@@ -208,6 +235,11 @@ private fun JournalApp(
                     // 因为编辑器就是根，返回栈里没有「上一层列表」可退。
                     onCloseEntry = { switchEntry(null) },
                     onOpenSidebar = openSidebar,
+                    onCreateEntry = {
+                        // 新建后替换当前编辑的日记。EditorScreen 内部已先 flush，
+                        // 这里只负责切换。
+                        homeVm.createEntry { newId -> switchEntry(newId) }
+                    },
                     onOpenSearch = { picked ->
                         // 带上当前上下文：正在编辑哪一篇、当前在哪个本。
                         // 查找页据此决定「本篇」与「本日记本」的范围。
@@ -215,7 +247,6 @@ private fun JournalApp(
                             Routes.search(entryId, entryBookId, picked.name)
                         )
                     },
-                    onOpenBackupSettings = { navController.navigate(Routes.BACKUP) },
                 )
             }
             }
@@ -231,6 +262,10 @@ private fun JournalApp(
                         onSelectBook = { homeVm.selectBook(it) },
                         onCreateBook = { showNewBookDialog = true },
                         onDeleteBookRequest = { pendingDeleteBook = it },
+                        onOpenSettings = {
+                            scope.launch { drawerState.close() }
+                            navController.navigate(Routes.SETTINGS)
+                        },
                     )
                 },
                 content = { screen() },
@@ -255,6 +290,13 @@ private fun JournalApp(
                     onDismiss = { pendingDeleteBook = null },
                 )
             }
+        }
+
+        composable(Routes.SETTINGS) {
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenBackup = { navController.navigate(Routes.BACKUP) },
+            )
         }
 
         composable(Routes.BACKUP) {
@@ -291,6 +333,7 @@ private fun JournalApp(
                 onOpenEntry = { id -> navController.navigate(Routes.editor(id)) },
             )
         }
+    }
     }
 }
 

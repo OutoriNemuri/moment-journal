@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,14 +37,20 @@ fun BackupOnboardingScreen(
     viewModel: BackupViewModel,
     onFinished: () -> Unit,
 ) {
+    // 选择失败的原因。null 表示还在首次尝试。
+    var failed by remember { mutableStateOf(false) }
+
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
-        if (uri != null) {
+        if (uri == null) {
+            // 用户取消了选择。停留在本页并给出反馈 ——
+            // 强制页若不回应"点了没反应"，用户会以为应用卡住了。
+            failed = true
+        } else {
             viewModel.onDirectoryChosen(uri)
             onFinished()
         }
-        // 用户取消选择则停留在本页，不强推进 —— 他还没做出决定
     }
 
     Column(
@@ -64,23 +69,36 @@ fun BackupOnboardingScreen(
         Spacer(Modifier.height(32.dp))
 
         Button(
-            onClick = { picker.launch(null) },
+            onClick = {
+                failed = false
+                picker.launch(null)
+            },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(stringResource(R.string.onboarding_pick))
+            // 失败之后按钮文案改为「重新选择」，让用户知道可以再试
+            Text(
+                stringResource(
+                    if (failed) R.string.onboarding_retry else R.string.onboarding_pick
+                )
+            )
         }
-        Spacer(Modifier.height(8.dp))
-        TextButton(
-            onClick = {
-                viewModel.postponeOnboarding()
-                onFinished()
-            },
-        ) {
-            Text(stringResource(R.string.onboarding_later))
+
+        if (failed) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = stringResource(R.string.onboarding_pick_failed),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+            )
         }
+        // 「稍后再说」已取消：备份改为强制配置。
+        //
+        // 强制页若不解释原因，用户只会感到被挡在外面。因此这里把
+        // 「为什么必须做」写清楚，而不是只留一个必点的按钮。
         Spacer(Modifier.height(16.dp))
         Text(
-            text = stringResource(R.string.onboarding_later_warning),
+            text = stringResource(R.string.onboarding_mandatory_note),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

@@ -13,6 +13,7 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import com.nemuri.journal.R
 import com.nemuri.journal.md.InlineSpan
+import com.nemuri.journal.util.ImageMetrics
 import com.nemuri.journal.md.MomentMarkdownParser
 import java.io.File
 import java.io.FileOutputStream
@@ -289,24 +290,25 @@ class LongImageRenderer(private val context: Context) {
         return if (f.exists()) f else null
     }
 
+    /**
+     * 按目标宽度算等比高度。
+     *
+     * 与屏幕渲染共用 [ImageMetrics] —— 这个 bug 的根源正是两处各写一遍：
+     * 导出按原始比例算（正确），屏幕渲染写死了 180dp（错误）。
+     * 保留一个薄封装是为了让调用处读起来仍是「渲染器在算自己的高度」。
+     */
     private fun scaledSize(file: File, maxWidth: Int): Pair<Float, Float>? {
-        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, opts)
-        if (opts.outWidth <= 0 || opts.outHeight <= 0) return null
-        val scale = maxWidth.toFloat() / opts.outWidth
-        return maxWidth.toFloat() to (opts.outHeight * scale)
+        val size = ImageMetrics.read(file) ?: return null
+        val scale = maxWidth.toFloat() / size.width
+        return maxWidth.toFloat() to (size.height * scale)
     }
 
     /** 按目标宽度降采样解码，避免把整张原图读进内存。 */
-    private fun decodeSampled(file: File, targetWidth: Int): Bitmap? {
-        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, opts)
-        if (opts.outWidth <= 0) return null
-        var sample = 1
-        while (opts.outWidth / (sample * 2) >= targetWidth) sample *= 2
-        return BitmapFactory.decodeFile(
+    private fun decodeSampled(file: File, targetWidth: Int): Bitmap? =
+        BitmapFactory.decodeFile(
             file.absolutePath,
-            BitmapFactory.Options().apply { inSampleSize = sample },
+            BitmapFactory.Options().apply {
+                inSampleSize = ImageMetrics.sampleSizeFor(file, targetWidth)
+            },
         )
-    }
 }

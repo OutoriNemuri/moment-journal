@@ -120,6 +120,15 @@ class BackupScheduler(context: Context) {
         }
     }
 
+    /**
+     * 列出已授权备份目录中的归档。
+     * 目录未配置时返回空列表 —— 此时用户应从别处选择归档。
+     */
+    suspend fun listArchives(limit: Int = 20): List<MjbBackupManager.ArchiveEntry> {
+        val raw = prefs.backupTreeUri ?: return emptyList()
+        return MjbBackupManager(appContext).listArchives(Uri.parse(raw), limit)
+    }
+
     /** 从归档恢复。破坏性操作，调用方必须已获得用户确认。 */
     suspend fun restore(archive: Uri): RestoreResult = withContext(Dispatchers.IO) {
         MjbBackupManager(appContext).restore(archive)

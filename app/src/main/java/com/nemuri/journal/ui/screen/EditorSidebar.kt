@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,6 +53,7 @@ fun Sidebar(
     onSelectBook: (Long) -> Unit,
     onCreateBook: () -> Unit,
     onDeleteBookRequest: (Book) -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     ModalDrawerSheet {
         Column(Modifier.fillMaxSize()) {
@@ -144,6 +146,20 @@ fun Sidebar(
                     )
                 }
             }
+            // ---------- 底部：设置 ----------
+            //
+            // 放在侧栏最底部、与日记本列表用分割线隔开：设置是**应用级**的，
+            // 不属于「当前这个日记本」，也不属于「当前这篇日记」。
+            // 放在这里还有个实际好处：任何状态下都能进入，
+            // 不依赖是否打开了日记。
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            NavigationDrawerItem(
+                label = { Text(stringResource(R.string.settings_title)) },
+                icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+                selected = false,
+                onClick = onOpenSettings,
+                modifier = Modifier.padding(horizontal = 12.dp),
+            )
             Spacer(Modifier.height(16.dp))
         }
     }

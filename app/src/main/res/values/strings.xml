@@ -38,8 +38,6 @@
     <!-- ==================== 主界面顶栏 ==================== -->
     <string name="home_open_sidebar">打开侧栏</string>
     <string name="home_actions">日记操作</string>
-    <string name="home_backup_settings">备份设置</string>
-
     <!-- ==================== 侧栏 ==================== -->
     <string name="sidebar_index">目录</string>
     <string name="sidebar_books">日记本</string>
@@ -48,11 +46,6 @@
     <string name="sidebar_empty_book">这个日记本还没有日记</string>
 
     <!-- ==================== 主界面状态 ==================== -->
-    <string name="home_no_book_title">还没有日记本</string>
-    <string name="home_no_book_hint">先在侧栏创建一个日记本，才能开始写日记。</string>
-    <string name="home_empty_book_title">「%1$s」里还没有日记</string>
-    <string name="home_empty_book_hint">点击右下角开始记录</string>
-
     <!-- ==================== 编辑器 ==================== -->
     <string name="editor_new_entry">写日记</string>
     <string name="editor_title_hint">标题</string>
@@ -70,6 +63,8 @@
     <string name="editor_placeholder_title">写作</string>
     <string name="editor_placeholder_hint">从侧栏选择一篇日记，或按右下角新建一篇。</string>
     <string name="editor_missing_entry">日记已被删除</string>
+    <string name="editor_missing_entry_body">这篇日记已被删除，无法继续编辑。</string>
+    <string name="editor_missing_dismiss">返回</string>
 
     <!-- 保存状态 -->
     <string name="editor_save_saved">已保存</string>
@@ -77,15 +72,9 @@
 
     <!-- ==================== 功能抽屉 ==================== -->
     <string name="action_copy">复制日记</string>
-    <string name="action_copy_desc">复制正文，或标题 + 正文 + 创建时间</string>
     <string name="action_search">查找</string>
-    <string name="action_search_desc">在本篇、本日记本或所有日记本中搜索</string>
     <string name="action_export">导出</string>
-    <string name="action_export_desc">导出为 TXT、Markdown、长图或切分短图</string>
     <string name="action_change_time">时间</string>
-    <string name="action_change_time_desc">修改这篇日记的创建时间</string>
-    <string name="action_backup">备份</string>
-    <string name="action_backup_desc">指定备份位置，或从归档恢复</string>
     <string name="action_sheet_title">日记操作</string>
 
     <!-- 复制 -->
@@ -133,6 +122,12 @@
     <string name="change_time_hint">修改后，这篇日记会按新的时间在列表中重新排序，位置变化是正常的。</string>
     <string name="change_time_done">创建时间已修改，日记已按新时间重新排序</string>
 
+    <!-- ==================== 设置 ==================== -->
+    <string name="settings_title">设置</string>
+    <string name="settings_section_data">数据</string>
+    <string name="settings_backup">备份</string>
+    <string name="settings_backup_desc">备份位置、立即备份、从归档恢复</string>
+
     <!-- ==================== 备份 ==================== -->
     <string name="backup_title">备份</string>
     <string name="backup_section_location">备份位置</string>
@@ -177,13 +172,24 @@
     <string name="onboarding_title">你的日记存放在哪里？</string>
     <string name="onboarding_body">时刻日记需要你指定一个文件夹，用来存放备份。\n\n备份是 ZIP 归档，包含全部日记与图片，随时可以导入回来。\n归档会存放在所选文件夹下的 MomentJournal/Backups。</string>
     <string name="onboarding_pick">选择文件夹</string>
-    <string name="onboarding_later">稍后再说</string>
-    <string name="onboarding_later_warning">选择「稍后再说」的话，日记将只保存在本机。\n主界面会一直提示这一点，你可以随时在设置里指定目录。</string>
+    <string name="onboarding_mandatory_note">备份位置是必填项：时刻日记需要它来自动保存你的日记。\n所有数据仍然只存在本机，备份只是复制一份到你自己指定的文件夹。</string>
+    <string name="onboarding_retry">重新选择</string>
+    <string name="onboarding_pick_failed">无法访问所选文件夹，请换一个位置。</string>
 
     <!-- 备份提示条 -->
-    <string name="backup_warning_unconfigured">备份未配置，日记仅存于本机</string>
     <string name="backup_warning_failed">上次备份失败：%1$s</string>
     <string name="backup_warning_action">设置</string>
+    <string name="backup_warning_details">详情</string>
+    <string name="backup_warning_dismiss">知道了</string>
+    <string name="backup_warning_collapse">收起</string>
+
+    <!-- 归档列表 -->
+    <string name="restore_list_title">本机备份</string>
+    <string name="restore_list_empty">备份目录里还没有归档</string>
+    <string name="restore_pick_other">从其他位置选择…</string>
+    <string name="restore_item_summary">%1$d 篇 · %2$s</string>
+    <string name="restore_item_unreadable">此归档已损坏，无法读取</string>
+    <string name="restore_loading">正在读取归档…</string>
 
     <!-- ==================== 日记本 ==================== -->
     <string name="book_new_title">新建日记本</string>
@@ -196,9 +202,6 @@
     <string name="book_delete_final">日记本本身会被删除，此操作无法撤销。</string>
 
     <!-- ==================== 日记 ==================== -->
-    <string name="entry_delete_title">删除这篇日记？</string>
-    <string name="entry_delete_body">删除后无法从应用内恢复。若已配置备份，可从 .mjb 归档找回。</string>
-
     <!-- ==================== 导出渲染 ==================== -->
     <string name="export_missing_image">[图片缺失: %1$s]</string>
 

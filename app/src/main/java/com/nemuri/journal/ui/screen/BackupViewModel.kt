@@ -8,6 +8,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.nemuri.journal.backup.BackupScheduler
 import com.nemuri.journal.R
+import com.nemuri.journal.util.TimeFormat
+import com.nemuri.journal.backup.MjbBackupManager
 import com.nemuri.journal.backup.MjbManifest
 import com.nemuri.journal.data.prefs.JournalPrefs
 import com.nemuri.journal.data.repo.MomentRepository
@@ -32,9 +34,35 @@ class BackupViewModel(
     private val appContext: android.content.Context,
 ) : ViewModel() {
 
-    /** 是否已在首启引导中做过选择（无论选指定目录还是稍后再说）。 */
-    private val _onboardingVisible = MutableStateFlow(!prefs.onboardingDone)
+    /**
+     * 是否需要引导用户配置备份目录。
+     *
+     * 判据是**目录当前能否使用**，而不是"是否做过选择"。
+     * 此前用 `onboardingDone` 标记，它只记录用户点过按钮，
+     * 不反映目录后来是否被撤销授权、删除或所在存储卡被卸载 ——
+     * 那些情况下应用会以为自己配置好了，而备份从此静默失败。
+     *
+     * 初值为 true（先当作未配置），启动时异步校验后才置为真实值。
+     * 宁可多显示一次引导，也不要让用户以为备份在工作而实际没有。
+     */
+    private val _onboardingVisible = MutableStateFlow(true)
     val onboardingVisible: StateFlow<Boolean> = _onboardingVisible.asStateFlow()
+
+    init {
+        viewModelScope.launch { refreshOnboarding() }
+    }
+
+    /**
+     * 重新判定是否需要引导。
+     *
+     * 在启动时、以及每次回到前台时都应调用 —— 用户可能在系统设置里
+     * 撤销了授权，而应用对此一无所知。
+     */
+    suspend fun refreshOnboarding() {
+        val usable = scheduler.isConfigured() && scheduler.isDirectoryUsable()
+        _configured.value = usable
+        _onboardingVisible.value = !usable
+    }
 
     /** 是否已配置可用目录。未配置时主界面要挂常驻提示。 */
     private val _configured = MutableStateFlow(prefs.backupConfigured)
@@ -47,9 +75,26 @@ class BackupViewModel(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
-    /** 上次备份的失败原因，用于主界面的常驻提示。成功或从未尝试时为 null。 */
+    /** 上次备份的失败原因。成功或从未尝试时为 null。 */
     private val _errorState = MutableStateFlow(prefs.lastBackupError)
     val errorState: StateFlow<String?> = _errorState.asStateFlow()
+
+    /**
+     * 失败详情，供横幅展开显示。
+     *
+     * 包含时间与完整原因。横幅上只放一行摘要，展开后才显示这些 ——
+     * 长的错误信息（如具体是哪个文件写不进去）直接铺在横幅上会挤掉正文。
+     */
+    private val _errorDetails = MutableStateFlow<String?>(null)
+    val errorDetails: StateFlow<String?> = _errorDetails.asStateFlow()
+
+    /** 用户是否已关闭当前这条失败提示。关闭后不再重复展示，直到出现新的失败。 */
+    private val _dismissed = MutableStateFlow(false)
+    val dismissed: StateFlow<Boolean> = _dismissed.asStateFlow()
+
+    fun dismissError() {
+        _dismissed.value = true
+    }
 
     val lastBackupAt: Long get() = prefs.lastBackupAt
     val lastBackupError: String? get() = prefs.lastBackupError
@@ -64,7 +109,6 @@ class BackupViewModel(
             persistPermission(uri)
             prefs.backupTreeUri = uri.toString()
             _configured.value = true
-            prefs.onboardingDone = true
             _onboardingVisible.value = false
             try {
                 val result = scheduler.backupNow()
@@ -77,22 +121,19 @@ class BackupViewModel(
                 val reason = t.message ?: appContext.getString(R.string.backup_unknown_reason)
                 _message.value = appContext.getString(R.string.backup_failed, reason)
                 _errorState.value = reason
+                _errorDetails.value = buildString {
+                    append(appContext.getString(R.string.backup_last_success, TimeFormat.listStamp(System.currentTimeMillis())))
+                    append('\n')
+                    append(reason)
+                }
+                // 新的失败要重新展示，即使用户关过上一次的
+                _dismissed.value = false
             } finally {
                 _busy.value = false
             }
         }
     }
 
-    /**
-     * 用户选择「稍后再说」。
-     *
-     * 不是静默跳过：主界面会挂一条常驻提示说明日记仅存本机。
-     * 记录 onboardingDone 是为了不再反复弹窗骚扰 —— 提示条承担提醒职责。
-     */
-    fun postponeOnboarding() {
-        prefs.onboardingDone = true
-        _onboardingVisible.value = false
-    }
 
     // ------------------------------------------------------------ 手动操作
 
@@ -111,6 +152,13 @@ class BackupViewModel(
                 val reason = t.message ?: appContext.getString(R.string.backup_unknown_reason)
                 _message.value = appContext.getString(R.string.backup_failed, reason)
                 _errorState.value = reason
+                _errorDetails.value = buildString {
+                    append(appContext.getString(R.string.backup_last_success, TimeFormat.listStamp(System.currentTimeMillis())))
+                    append('\n')
+                    append(reason)
+                }
+                // 新的失败要重新展示，即使用户关过上一次的
+                _dismissed.value = false
             } finally {
                 _busy.value = false
             }
@@ -162,6 +210,22 @@ class BackupViewModel(
                     t.message ?: appContext.getString(R.string.backup_unknown_reason),
                 )
             }
+        }
+    }
+
+    /** 已授权目录中的归档列表。界面进入恢复流程时加载。 */
+    private val _archives = MutableStateFlow<List<MjbBackupManager.ArchiveEntry>>(emptyList())
+    val archives: StateFlow<List<MjbBackupManager.ArchiveEntry>> = _archives.asStateFlow()
+
+    private val _archivesLoading = MutableStateFlow(false)
+    val archivesLoading: StateFlow<Boolean> = _archivesLoading.asStateFlow()
+
+    fun loadArchives() {
+        viewModelScope.launch {
+            _archivesLoading.value = true
+            // 目录不可用时列表为空，界面据此提示「应从其他位置选择」
+            _archives.value = runCatching { scheduler.listArchives() }.getOrDefault(emptyList())
+            _archivesLoading.value = false
         }
     }
 

@@ -52,7 +52,14 @@ class MjbBackupManager(private val context: Context) {
         const val MAX_ARCHIVES = 30
     }
 
-    private val dbFile = MomentDatabase.fileFor(context)
+    /**
+     * 数据库文件路径。
+     *
+     * **每次现算，不在构造时缓存。** 路径本身在应用生命周期内不变，
+     * 但「文件是否存在」会变 —— Room 是惰性建库的，全新安装后
+     * 在第一次访问 DAO 之前，文件还不存在。缓存路径会掩盖这个事实。
+     */
+    private val dbFile: File get() = MomentDatabase.fileFor(context)
 
     // ---------------------------------------------------------------- 备份
 
@@ -70,6 +77,17 @@ class MjbBackupManager(private val context: Context) {
             ?: throw IllegalStateException("无法在所选目录创建 $BACKUP_DIR_NAME")
         val backupsDir = appDir.findFile(BACKUP_SUBDIR) ?: appDir.createDirectory(BACKUP_SUBDIR)
             ?: throw IllegalStateException("无法创建备份目录")
+
+        // 0) 确保数据库文件存在。
+        //
+        //    Room 惰性建库：全新安装后，在第一次访问 DAO 之前文件是不存在的。
+        //    用户可能装好应用就直接去配置备份，此时若直接对文件做 VACUUM INTO，
+        //    会报「数据库不存在」。
+        //
+        //    主动触发一次建库，而不是报错退出：全新安装配置备份后得到的
+        //    应该是一份合法的空库归档（"已备份，0 篇日记"），
+        //    而不是一次失败。空归档在恢复路径上同样有效。
+        ensureDatabaseExists()
 
         // 1) 一致性快照。VACUUM INTO 要求目标文件不存在。
         //
@@ -152,6 +170,18 @@ class MjbBackupManager(private val context: Context) {
         )
     }
 
+    /**
+     * 确保数据库文件存在。
+     *
+     * 访问一次 `dao()` 就足以让 Room 完成建库与迁移 —— 不必自己写 SQL 建表，
+     * 那会与 Room 的 schema 产生第二份真相。
+     */
+    private suspend fun ensureDatabaseExists() {
+        if (dbFile.exists()) return
+        // 触发 Room 建库。countEntries 是最轻的查询，不会产生副作用。
+        MomentDatabase.get(context).dao().countEntries()
+    }
+
     private fun collectImages(): List<File> {
         val dir = File(context.filesDir, com.nemuri.journal.md.MomentMarkdown.IMAGE_DIR)
         if (!dir.isDirectory) return emptyList()
@@ -165,6 +195,53 @@ class MjbBackupManager(private val context: Context) {
             .sortedByDescending { it.name.orEmpty() }
         files.drop(MAX_ARCHIVES).forEach { runCatching { it.delete() } }
     }
+
+    // ---------------------------------------------------------------- 列举
+
+    /** 归档目录中的一个候选归档。 */
+    data class ArchiveEntry(
+        val uri: Uri,
+        val name: String,
+        val sizeBytes: Long,
+        val manifest: MjbManifest?,
+        /** 读不出清单时的原因。null 表示可正常恢复。 */
+        val error: String?,
+    )
+
+    /**
+     * 列出已授权目录中的归档。
+     *
+     * 用途是让用户在「从归档恢复」时直接看到本机备份，而不必每次
+     * 从文件框架里翻找。**保留从别处选择的路径** —— 归档可能来自
+     * 另一台设备、聊天软件或网盘，不只是本机生成的。
+     *
+     * [limit] 限制读取数量：逐个解析清单有 I/O 成本，归档多时会拖慢界面。
+     * 按文件名倒序（文件名含时间戳），因此取最近若干个即可。
+     */
+    suspend fun listArchives(treeUri: Uri, limit: Int = 20): List<ArchiveEntry> =
+        withContext(Dispatchers.IO) {
+            val root = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext emptyList()
+            val appDir = root.findFile(BACKUP_DIR_NAME) ?: return@withContext emptyList()
+            val backupsDir = appDir.findFile(BACKUP_SUBDIR) ?: return@withContext emptyList()
+
+            backupsDir.listFiles()
+                .filter { it.isFile && it.name?.endsWith(".$EXT") == true }
+                .sortedByDescending { it.name.orEmpty() }
+                .take(limit)
+                .map { doc ->
+                    val name = doc.name.orEmpty()
+                    // 单个归档损坏不能让整个列表失败：那一项标记为不可恢复，
+                    // 其余照常可用。
+                    val result = runCatching { readManifest(doc.uri) }
+                    ArchiveEntry(
+                        uri = doc.uri,
+                        name = name,
+                        sizeBytes = doc.length(),
+                        manifest = result.getOrNull(),
+                        error = result.exceptionOrNull()?.message,
+                    )
+                }
+        }
 
     // ---------------------------------------------------------------- 恢复
 

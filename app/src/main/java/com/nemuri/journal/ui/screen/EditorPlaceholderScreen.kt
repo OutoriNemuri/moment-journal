@@ -56,7 +56,6 @@ fun EditorPlaceholderScreen(
     canCreate: Boolean,
     onCreateEntry: () -> Unit,
     onOpenSidebar: () -> Unit,
-    onOpenBackupSettings: () -> Unit,
 ) {
     // 占位状态下抽屉里只有「备份」，但它必须能打开 ——
     // 备份与有没有打开日记无关。这与「四项编辑功能不显示」并不矛盾：
@@ -131,14 +130,11 @@ fun EditorPlaceholderScreen(
     if (showActions) {
         EditorActionSheet(
             onDismiss = { showActions = false },
-            entryOpen = false,
             onAction = { action ->
                 showActions = false
-                when (action) {
-                    EditorAction.BACKUP -> onOpenBackupSettings()
-                    // 其余项在占位状态下不会出现，这里只是把 when 写全
-                    else -> Unit
-                }
+                // 占位状态下没有日记，四项都不可用。
+                // 这里不做事，但抽屉本身仍可打开 —— 它以后还会承载其他项。
+                Unit
             },
         )
     }

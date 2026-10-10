@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Delete
@@ -86,16 +87,17 @@ fun EditorScreen(
     viewModel: EditorViewModel,
     /** 关掉当前日记，回到占位状态。编辑器是主界面，这里不是「返回上一层」。 */
     onCloseEntry: () -> Unit,
+    /** 新建一篇日记。当前这篇若有未落库内容会先落库，不会丢。 */
+    onCreateEntry: () -> Unit = {},
     /** 打开侧栏。它与功能抽屉同在顶栏，同级。 */
     onOpenSidebar: () -> Unit = {},
     /** 进入查找页。三档范围由查找页自己切换。 */
     onOpenSearch: (SearchViewModel.Scope) -> Unit = {},
-    /** 进入备份设置。备份入口放在功能抽屉里，与其余操作同级。 */
-    onOpenBackupSettings: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    val loadState by viewModel.loadState.collectAsStateWithLifecycle()
     val title by viewModel.title.collectAsStateWithLifecycle()
     val body by viewModel.body.collectAsStateWithLifecycle()
     val createdAt by viewModel.createdAt.collectAsStateWithLifecycle()
@@ -178,6 +180,18 @@ fun EditorScreen(
     }
     BackHandler { closeEntry() }
 
+    // 数据尚未就绪时不渲染编辑区。
+    // 此前以空值作初值直接渲染，于是打开日记会先闪一帧「空标题 + 1970 年」。
+    if (loadState != EditorViewModel.LoadState.Ready) {
+        EditorLoadingScreen(
+            missing = loadState == EditorViewModel.LoadState.Missing,
+            onCloseEntry = onCloseEntry,
+            onOpenSidebar = onOpenSidebar,
+        )
+        // 缺失状态下不需要下面任何编辑逻辑，直接返回
+        if (loadState == EditorViewModel.LoadState.Missing) return
+    }
+
     Scaffold(
         snackbarHost = {
             SnackbarHost(snackbarHostState) { data ->
@@ -198,6 +212,19 @@ fun EditorScreen(
                     }
                 },
                 actions = {
+                    // 新建。它不操作当前这篇日记，因此不属于功能抽屉 —
+                    // 抽屉里四项都是「对当前日记做什么」，新建不是。
+                    IconButton(onClick = {
+                        // 先落库再新建：新建会替换当前编辑的日记，
+                        // 与「关闭当前日记」在数据层面是同一个动作，
+                        // 因此复用同一套 flush 流程，不另写一份。
+                        scope.launch {
+                            viewModel.flushNow()
+                            onCreateEntry()
+                        }
+                    }) {
+                        Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.editor_new_entry))
+                    }
                     IconButton(onClick = {
                         // 切换前先落库，避免预览看到的是旧内容
                         scope.launch { viewModel.flushNow() }
@@ -321,7 +348,6 @@ fun EditorScreen(
     if (showActionSheet) {
         EditorActionSheet(
             onDismiss = { showActionSheet = false },
-            entryOpen = true,
             onAction = { action ->
                 showActionSheet = false
                 when (action) {
@@ -329,7 +355,6 @@ fun EditorScreen(
                     EditorAction.SEARCH -> showSearchScope = true
                     EditorAction.EXPORT -> showExportSheet = true
                     EditorAction.CHANGE_TIME -> showChangeTime = true
-                    EditorAction.BACKUP -> onOpenBackupSettings()
                 }
             },
         )

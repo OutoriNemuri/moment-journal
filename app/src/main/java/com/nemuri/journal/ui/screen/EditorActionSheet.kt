@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Schedule
@@ -18,7 +17,6 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
@@ -54,20 +52,17 @@ import com.nemuri.journal.export.Exporter
 /**
  * 抽屉里的四项操作。
  *
- * 标签与描述存的是字符串资源 id 而不是字面量：枚举是编译期常量，
+ * 标签存的是字符串资源 id 而不是字面量：枚举是编译期常量，
  * 拿不到 Composable 的 stringResource，因此在这里存 id、在使用处解析。
- * [BACKUP] 不属于「编辑日记」的四项，但因为占位状态下抽屉仍需可用，
- * 所以与它们并列。
+ *
+ * 这四项都是**对当前这篇日记的操作**。备份不属于这里 —— 它不操作日记，
+ * 已移入独立的「设置」页。
  */
-enum class EditorAction(
-    @StringRes val labelRes: Int,
-    @StringRes val descriptionRes: Int,
-) {
-    COPY(R.string.action_copy, R.string.action_copy_desc),
-    SEARCH(R.string.action_search, R.string.action_search_desc),
-    EXPORT(R.string.action_export, R.string.action_export_desc),
-    CHANGE_TIME(R.string.action_change_time, R.string.action_change_time_desc),
-    BACKUP(R.string.action_backup, R.string.action_backup_desc),
+enum class EditorAction(@StringRes val labelRes: Int) {
+    COPY(R.string.action_copy),
+    SEARCH(R.string.action_search),
+    EXPORT(R.string.action_export),
+    CHANGE_TIME(R.string.action_change_time),
 }
 
 private fun EditorAction.icon(): ImageVector = when (this) {
@@ -75,44 +70,68 @@ private fun EditorAction.icon(): ImageVector = when (this) {
     EditorAction.SEARCH -> Icons.Outlined.Search
     EditorAction.EXPORT -> Icons.Outlined.FileDownload
     EditorAction.CHANGE_TIME -> Icons.Outlined.Schedule
-    // 备份：用云上传表示「存到设备之外」，与「导出」的下载箭头区分开
-    EditorAction.BACKUP -> Icons.Outlined.CloudUpload
 }
 
-/** 一级抽屉：四项功能入口。 */
+/** 一级抽屉：功能入口，双列网格。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorActionSheet(
     onDismiss: () -> Unit,
     onAction: (EditorAction) -> Unit,
-    /**
-     * 是否已打开一篇日记。
-     *
-     * 为 false 时（占位状态）只显示 [EditorAction.BACKUP] ——
-     * 其余四项都需要一篇已打开的日记，显示出来点了也没意义。
-     * 备份与日记无关，因此在任何状态下都可用。
-     */
-    entryOpen: Boolean,
 ) {
     val sheetState = rememberModalBottomSheetState()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         SheetBody(title = stringResource(R.string.action_sheet_title)) {
-            EditorAction.entries
-                .filter { entryOpen || it == EditorAction.BACKUP }
-                .forEach { action ->
-                ListItem(
-                    headlineContent = { Text(stringResource(action.labelRes)) },
-                    supportingContent = {
-                        Text(
-                            stringResource(action.descriptionRes),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    leadingContent = { Icon(action.icon(), contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth().clickable { onAction(action) },
-                )
+            // 双列网格，去掉了每项的说明文字。
+            //
+            // 说明在单列布局里占了抽屉一半以上的高度，而四项的名称本身
+            // 已经足够表意（"复制""查找""导出""时间"）。说明只在用户
+            // 不确定某项做什么时才有价值，而带图标的网格更容易扫视。
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                EditorAction.entries.chunked(2).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        row.forEach { action ->
+                            GridActionCell(
+                                action = action,
+                                modifier = Modifier.weight(1f),
+                                onClick = { onAction(action) },
+                            )
+                        }
+                        // 奇数个时补一个占位，避免最后一个被拉伸到整行
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
             }
+        }
+    }
+}
+
+/** 网格中的一个功能格。图标在上、名称在下。 */
+@Composable
+private fun GridActionCell(
+    action: EditorAction,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    androidx.compose.material3.Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(action.icon(), contentDescription = null)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(action.labelRes),
+                style = MaterialTheme.typography.labelLarge,
+            )
         }
     }
 }
