@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  导出图片的分享路径。只开放 cacheDir/exports，不暴露应用私有数据目录：
+  FileProvider 一旦配错根目录，等于把整个应用数据暴露给任何请求该 URI 的应用。
+-->
+<paths>
+    <cache-path name="exports" path="exports/" />
+</paths>

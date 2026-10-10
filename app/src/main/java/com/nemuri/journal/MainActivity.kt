@@ -27,6 +27,8 @@ import com.nemuri.journal.ui.screen.EditorScreen
 import com.nemuri.journal.ui.screen.EditorViewModel
 import com.nemuri.journal.ui.screen.HomeScreen
 import com.nemuri.journal.ui.screen.HomeViewModel
+import com.nemuri.journal.ui.screen.SearchScreen
+import com.nemuri.journal.ui.screen.SearchViewModel
 import com.nemuri.journal.ui.theme.MomentJournalTheme
 
 class MainActivity : ComponentActivity() {
@@ -70,7 +72,9 @@ private object Routes {
     const val HOME = "home"
     const val EDITOR = "editor/{entryId}"
     const val BACKUP = "backup"
+    const val SEARCH = "search/{entryId}/{bookId}/{scope}"
     fun editor(id: Long) = "editor/$id"
+    fun search(entryId: Long, bookId: Long, scope: String) = "search/$entryId/$bookId/$scope"
 }
 
 @Composable
@@ -116,6 +120,34 @@ private fun JournalApp(
         }
 
         composable(
+            route = Routes.SEARCH,
+            arguments = listOf(
+                navArgument("entryId") { type = NavType.LongType },
+                navArgument("bookId") { type = NavType.LongType },
+                navArgument("scope") { type = NavType.StringType },
+            ),
+        ) { backStackEntry ->
+            val entryId = backStackEntry.arguments?.getLong("entryId") ?: -1L
+            val bookId = backStackEntry.arguments?.getLong("bookId") ?: -1L
+            val scopeName = backStackEntry.arguments?.getString("scope").orEmpty()
+            val vm: SearchViewModel = viewModel(
+                key = "search-$entryId",
+                factory = SearchViewModel.factory(repository),
+            )
+            // prepare 只在首次组合时执行，避免每次重组都重置查询状态
+            androidx.compose.runtime.LaunchedEffect(entryId, bookId) {
+                vm.prepare(entryId, bookId)
+                val scope = SearchViewModel.Scope.entries.firstOrNull { it.name == scopeName }
+                if (scope != null) vm.onScopeChange(scope)
+            }
+            SearchScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onOpenEntry = { id -> navController.navigate(Routes.editor(id)) },
+            )
+        }
+
+        composable(
             route = Routes.EDITOR,
             arguments = listOf(navArgument("entryId") { type = NavType.LongType }),
         ) { backStackEntry ->
@@ -124,7 +156,20 @@ private fun JournalApp(
                 key = "editor-$entryId",
                 factory = editorFactory(repository, entryId),
             )
-            EditorScreen(viewModel = vm, onBack = { navController.popBackStack() })
+            // 必须收集为状态：该值在日记加载完成后才就绪，
+            // 直接读属性不会触发重组，查找范围就会一直拿到 -1。
+            val entryBookId by vm.bookId.collectAsStateWithLifecycle()
+            EditorScreen(
+                viewModel = vm,
+                onBack = { navController.popBackStack() },
+                onOpenSearch = { picked ->
+                    // 带上当前上下文：正在编辑哪一篇、当前在哪个本。
+                    // 查找页据此决定「本篇」与「本日记本」的范围。
+                    navController.navigate(
+                        Routes.search(entryId, entryBookId, picked.name)
+                    )
+                },
+            )
         }
     }
 }

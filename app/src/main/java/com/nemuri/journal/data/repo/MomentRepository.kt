@@ -2,6 +2,7 @@ package com.nemuri.journal.data.repo
 
 import com.nemuri.journal.data.db.Book
 import com.nemuri.journal.data.db.Entry
+import com.nemuri.journal.data.db.EntryWithBookName
 import com.nemuri.journal.data.db.MomentDao
 import com.nemuri.journal.data.db.DEFAULT_BOOK_NAME
 import kotlinx.coroutines.flow.Flow
@@ -86,4 +87,21 @@ class MomentRepository(private val dao: MomentDao) {
     // ---------------------------------------------------------------- 维护
 
     suspend fun countEntries(): Int = dao.countEntries()
+
+    // ---------------------------------------------------------------- 查找
+
+    /**
+     * 在指定日记本内查找。
+     * 这是「本日记本」范围，也是跨本查找之外最常用的范围。
+     */
+    suspend fun searchInBook(bookId: Long, query: String): List<EntryWithBookName> =
+        dao.searchInBook(bookId, query)
+
+    /**
+     * 跨全部日记本查找。
+     *
+     * 注意这不等于恢复「全部日记」入口：本方法只服务于一次查询，
+     * 返回的是一次性结果列表，不改变当前打开的日记本。
+     */
+    suspend fun searchAll(query: String): List<EntryWithBookName> = dao.searchAll(query)
 }

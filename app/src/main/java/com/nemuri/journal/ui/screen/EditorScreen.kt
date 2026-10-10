@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Visibility
@@ -54,6 +55,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nemuri.journal.export.Exporter
 import com.nemuri.journal.md.MomentMarkdown
 import com.nemuri.journal.ui.component.MdBody
 import com.nemuri.journal.util.ImageStore
@@ -76,6 +78,8 @@ import kotlinx.coroutines.launch
 fun EditorScreen(
     viewModel: EditorViewModel,
     onBack: () -> Unit,
+    /** 进入查找页。三档范围由查找页自己切换。 */
+    onOpenSearch: (SearchViewModel.Scope) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -86,6 +90,17 @@ fun EditorScreen(
     val saveState by viewModel.saveState.collectAsStateWithLifecycle()
 
     var showPreview by remember { mutableStateOf(false) }
+    // 四位一体的抽屉状态：一级抽屉与三个二级抽屉
+    var showActionSheet by remember { mutableStateOf(false) }
+    var showCopySheet by remember { mutableStateOf(false) }
+    var showExportSheet by remember { mutableStateOf(false) }
+    var showSearchScope by remember { mutableStateOf(false) }
+    var showChangeTime by remember { mutableStateOf(false) }
+    var toast by remember { mutableStateOf<String?>(null) }
+
+    // 待写入的导出内容。SAF 的 CreateDocument 会先返回，用户选完位置才回调，
+    // 因此内容要先暂存起来。
+    var pendingTextExport by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -96,6 +111,23 @@ fun EditorScreen(
                 viewModel.onBodyChange(body + "\n" + MomentMarkdown.imageToken(path) + "\n")
             }
         }
+    }
+
+    // 文本导出：让用户选保存位置。SAF 返回的 Uri 可能指向任意位置，
+    // 这里只负责把内容写进去，写失败必须让用户看见。
+    val textExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("*/*")
+    ) { uri ->
+        val pending = pendingTextExport
+        if (uri != null && pending != null) {
+            val ok = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(pending.content.toByteArray(Charsets.UTF_8))
+                } ?: error("无法写入所选位置")
+            }
+            toast = if (ok.isSuccess) "已导出" else "导出失败：${ok.exceptionOrNull()?.message}"
+        }
+        pendingTextExport = null
     }
 
     // 退出前把未落库的草稿推一次。返回手势与返回按钮共用这一条路径。
@@ -130,6 +162,10 @@ fun EditorScreen(
                             },
                             contentDescription = if (showPreview) "编辑" else "预览",
                         )
+                    }
+                    // 功能抽屉入口，与左上角侧栏按钮同级
+                    IconButton(onClick = { showActionSheet = true }) {
+                        Icon(Icons.Outlined.MoreVert, contentDescription = "日记操作")
                     }
                     SaveIndicator(saveState)
                 },
@@ -228,6 +264,108 @@ fun EditorScreen(
                 onPickImage = { imagePicker.launch(arrayOf("image/*")) },
             )
         }
+    }
+
+    // ---------------- 功能抽屉 ----------------
+
+    if (showActionSheet) {
+        EditorActionSheet(
+            onDismiss = { showActionSheet = false },
+            onAction = { action ->
+                showActionSheet = false
+                when (action) {
+                    EditorAction.COPY -> showCopySheet = true
+                    EditorAction.SEARCH -> showSearchScope = true
+                    EditorAction.EXPORT -> showExportSheet = true
+                    EditorAction.CHANGE_TIME -> showChangeTime = true
+                }
+            },
+        )
+    }
+
+    if (showCopySheet) {
+        CopySheet(
+            onDismiss = { showCopySheet = false },
+            onConfirm = { includeHeader ->
+                val text = viewModel.copyText(includeHeader)
+                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                    as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("日记", text))
+                showCopySheet = false
+                toast = "已复制到剪贴板"
+            },
+        )
+    }
+
+    if (showSearchScope) {
+        SearchScopeSheet(
+            onDismiss = { showSearchScope = false },
+            onPick = { picked ->
+                showSearchScope = false
+                scope.launch { viewModel.flushNow() }   // 先把当前内容落库，才能查到它
+                onOpenSearch(picked)
+            },
+        )
+    }
+
+    if (showExportSheet) {
+        ExportSheet(
+            onDismiss = { showExportSheet = false },
+            onText = { format ->
+                showExportSheet = false
+                val payload = viewModel.exportPayload(plainText = format == Exporter.TextFormat.TXT)
+                // 内容暂存，等用户选完保存位置再写入
+                pendingTextExport = payload.suggestedName + "." + format.extension to payload.body
+                textExporter.launch(payload.suggestedName + "." + format.extension)
+            },
+            onImage = { slice ->
+                showExportSheet = false
+                scope.launch {
+                    val payload = viewModel.exportPayload(plainText = false)
+                    val result = runCatching {
+                        Exporter.renderImages(
+                            context = context,
+                            title = payload.title,
+                            body = payload.body,
+                            meta = TimeFormat.listStamp(payload.createdAt),
+                            baseName = payload.suggestedName,
+                            slice = slice,
+                        )
+                    }
+                    result.onSuccess { r ->
+                        // 渲染完成后再交给系统分享。图片可能有多张，统一走分享面板。
+                        Exporter.shareFiles(
+                            context, r.files, "image/png", payload.title,
+                        )
+                        if (r.sliced) toast = "内容较长，已切分为 ${r.files.size} 张"
+                    }.onFailure {
+                        toast = "导出失败：${it.message}"
+                    }
+                }
+            },
+        )
+    }
+
+    if (showChangeTime) {
+        ChangeTimeDialog(
+            currentMillis = createdAt,
+            onDismiss = { showChangeTime = false },
+            onConfirm = { millis ->
+                viewModel.changeCreatedAt(millis)
+                showChangeTime = false
+                toast = "创建时间已修改，日记已按新时间重新排序"
+            },
+        )
+    }
+
+    toast?.let { message ->
+        LaunchedEffect(message) {
+            kotlinx.coroutines.delay(2400)
+            toast = null
+        }
+        androidx.compose.material3.Snackbar(
+            modifier = Modifier.padding(16.dp),
+        ) { Text(message) }
     }
 }
 

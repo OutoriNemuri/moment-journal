@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nemuri.journal.data.db.Entry
 import com.nemuri.journal.data.repo.MomentRepository
+import com.nemuri.journal.util.TimeFormat
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -46,6 +47,15 @@ class EditorViewModel(
     private val _createdAt = MutableStateFlow(0L)
     val createdAt: StateFlow<Long> = _createdAt.asStateFlow()
 
+    /**
+     * 本篇所属的日记本。
+     *
+     * 供「查找」确定范围用：本日记本范围需要知道当前在哪本。
+     * -1 表示尚未加载出来，调用方需处理该情形（查找页会退回「本篇」）。
+     */
+    private val _bookId = MutableStateFlow(-1L)
+    val bookId: StateFlow<Long> = _bookId.asStateFlow()
+
     private val _saveState = MutableStateFlow(SaveState.SAVED)
     val saveState: StateFlow<SaveState> = _saveState.asStateFlow()
 
@@ -68,6 +78,7 @@ class EditorViewModel(
             _title.value = loaded.title
             _body.value = loaded.body
             _createdAt.value = loaded.createdAt
+            _bookId.value = loaded.bookId ?: -1L
         }
 
         viewModelScope.launch {
@@ -118,6 +129,95 @@ class EditorViewModel(
             _saveState.value = SaveState.SAVED
         }
     }
+
+    // ---------------------------------------------------------------- 复制
+
+    /**
+     * 生成可复制的文本。
+     *
+     * 输出 **Markdown 源文本**，而不是渲染后的纯文本。理由：本应用的正文本身就是
+     * Markdown，`![time]` / `![img]` 等嵌入都是文本形式。复制成纯文本会丢掉全部
+     * 样式与嵌入，粘到别处就失去原貌；而 Markdown 源文本粘回本应用任意一篇日记
+     * 都能还原。反过来（要纯文本时自行处理）是能做到的，反之则不行。
+     */
+    fun copyText(includeHeader: Boolean): String {
+        val body = _body.value
+        if (!includeHeader) return body
+        return buildString {
+            append(_title.value.ifBlank { "无标题" })
+            append('\n')
+            append(TimeFormat.isoFromEpoch(_createdAt.value))
+            append('\n')
+            append('\n')
+            append(body)
+        }
+    }
+
+    // ---------------------------------------------------------------- 时间
+
+    /**
+     * 修改创建时间。
+     *
+     * 注意：列表按 `createdAt` 倒序排列，因此改完之后日记会跳到列表的相应位置。
+     * 这是预期行为而非缺陷，界面上需要提示，否则用户会以为日记丢了。
+     */
+    fun changeCreatedAt(millis: Long) {
+        _createdAt.value = millis
+        viewModelScope.launch {
+            val current = repo.findEntry(entryId) ?: return@launch
+            repo.saveEntry(current.copy(createdAt = millis))
+            _saveState.value = SaveState.SAVED
+        }
+    }
+
+    // ---------------------------------------------------------------- 导出
+
+    /** 导出用的快照：标题、正文、创建时间，以及文件名建议。 */
+    data class ExportPayload(
+        val title: String,
+        val body: String,
+        val createdAt: Long,
+        val suggestedName: String,
+    )
+
+    /**
+     * 生成导出内容。
+     *
+     * [plainText] 为 true 时把嵌入标记剥离成可读文字（供 TXT）；
+     * 为 false 时原样输出 Markdown 源文本（供 .md）。
+     */
+    fun exportPayload(plainText: Boolean): ExportPayload {
+        val title = _title.value.ifBlank { "无标题" }
+        val body = if (plainText) stripEmbeds(_body.value) else _body.value
+        val stamp = TimeFormat.fileStamp(_createdAt.value)
+        // 文件名不能含路径分隔符，标题里的 / 会破坏 SAF 的显示名
+        val safeTitle = title.replace(Regex("""[/\\:*?"<>|]"""), "_").take(40)
+        return ExportPayload(
+            title = title,
+            body = body,
+            createdAt = _createdAt.value,
+            suggestedName = "$stamp $safeTitle",
+        )
+    }
+
+    /**
+     * 把嵌入标记压成可读文字。
+     *
+     * 图片在纯文本里没有意义，替换为其文件名；时间戳替换为本地可读形式。
+     * 这不是渲染，只是让 TXT 读起来不像一串语法。
+     */
+    private fun stripEmbeds(body: String): String =
+        body
+            .replace(Regex("""!\[time]\(([^)]*)\)""")) { m ->
+                "[" + TimeFormat.displayFromIso(m.groupValues[1]) + "]"
+            }
+            .replace(Regex("""!\[loc]\(([^,]*),([^,]*),?([^)]*)\)""")) { m ->
+                val name = m.groupValues[3]
+                "[地点 " + (name.ifBlank { m.groupValues[1] + "," + m.groupValues[2] }) + "]"
+            }
+            .replace(Regex("""!\[img]\(([^)]*)\)""")) { m ->
+                "[" + m.groupValues[1].substringAfterLast('/') + "]"
+            }
 
     private data class Draft(val title: String, val body: String)
 

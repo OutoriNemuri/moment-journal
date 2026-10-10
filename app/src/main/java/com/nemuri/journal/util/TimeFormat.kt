@@ -34,4 +34,9 @@ object TimeFormat {
 
     fun dateStamp(millis: Long): String =
         Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(DATE)
+
+    /** 用于生成文件名：不含冒号等在各平台上会出问题的字符。 */
+    fun fileStamp(millis: Long): String =
+        Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HHmm"))
 }

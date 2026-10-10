@@ -39,6 +39,38 @@ interface MomentDao {
     @Query("UPDATE entries SET book_id = :toBookId WHERE book_id = :fromBookId")
     suspend fun moveEntries(fromBookId: Long, toBookId: Long)
 
+    // ---------- 查找 ----------
+
+    /**
+     * 在指定日记本内查找。
+     *
+     * 用 LIKE 而非 FTS：日记规模是千条量级，LIKE 在这个量级下毫秒级返回，
+     * 而 FTS 需要额外的虚拟表、分词配置与迁移负担。
+     * `LIKE` 对 ASCII 大小写不敏感，但**对非 ASCII（中文）本就是子串匹配**，
+     * 因此中日文的关键词同样能命中。
+     */
+    @Query(
+        """
+        SELECT e.*, b.name AS book_name FROM entries e
+        LEFT JOIN books b ON b.id = e.book_id
+        WHERE e.book_id = :bookId
+          AND (e.title LIKE '%' || :query || '%' OR e.body LIKE '%' || :query || '%')
+        ORDER BY e.created_at DESC
+        """
+    )
+    suspend fun searchInBook(bookId: Long, query: String): List<EntryWithBookName>
+
+    /** 跨全部日记本查找。结果带上所属日记本名，便于用户分辨来源。 */
+    @Query(
+        """
+        SELECT e.*, b.name AS book_name FROM entries e
+        LEFT JOIN books b ON b.id = e.book_id
+        WHERE e.title LIKE '%' || :query || '%' OR e.body LIKE '%' || :query || '%'
+        ORDER BY e.created_at DESC
+        """
+    )
+    suspend fun searchAll(query: String): List<EntryWithBookName>
+
     // ---------- 日记本 ----------
 
     @Query("SELECT * FROM books ORDER BY sort_order ASC, created_at ASC")
