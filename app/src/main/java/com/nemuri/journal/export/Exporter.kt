@@ -2,6 +2,8 @@ package com.nemuri.journal.export
 
 import android.content.Context
 import android.content.Intent
+import androidx.annotation.StringRes
+import com.nemuri.journal.R
 import androidx.core.content.FileProvider
 import java.io.File
 
@@ -24,9 +26,19 @@ object Exporter {
     private const val EXPORT_DIR = "exports"
     private const val AUTHORITY_SUFFIX = ".fileprovider"
 
-    enum class TextFormat(val label: String, val extension: String, val mime: String) {
-        TXT("纯文本 (.txt)", "txt", "text/plain"),
-        MARKDOWN("Markdown (.md)", "md", "text/markdown"),
+    /**
+     * 文本导出格式。
+     *
+     * [labelRes] 指向字符串资源而不是字面量 —— 这是要显示给用户看的。
+     * 文件名扩展名与 MIME 与语言无关，保持常量。
+     */
+    enum class TextFormat(
+        @StringRes val labelRes: Int,
+        val extension: String,
+        val mime: String,
+    ) {
+        TXT(R.string.export_txt, "txt", "text/plain"),
+        MARKDOWN(R.string.export_md, "md", "text/markdown"),
     }
 
     data class ImageResult(

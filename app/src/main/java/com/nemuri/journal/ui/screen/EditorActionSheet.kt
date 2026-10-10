@@ -1,5 +1,6 @@
 package com.nemuri.journal.ui.screen
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,6 +33,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.nemuri.journal.R
 import com.nemuri.journal.export.Exporter
 
 /**
@@ -47,11 +50,23 @@ import com.nemuri.journal.export.Exporter
  * 做成对话框会让人以为还要按一次确定，多一次无谓的交互。
  * 唯一的例外是「修改创建时间」——那需要日期与时间两步选择，无法一蹴而就。
  */
-enum class EditorAction(val label: String, val description: String) {
-    COPY("复制日记", "复制正文，或标题 + 正文 + 创建时间"),
-    SEARCH("查找", "在本篇、本日记本或所有日记本中搜索"),
-    EXPORT("导出", "导出为 TXT、Markdown、长图或切分短图"),
-    CHANGE_TIME("时间", "修改这篇日记的创建时间"),
+/**
+ * 抽屉里的四项操作。
+ *
+ * 标签与描述存的是字符串资源 id 而不是字面量：枚举是编译期常量，
+ * 拿不到 Composable 的 stringResource，因此在这里存 id、在使用处解析。
+ * [BACKUP] 不属于「编辑日记」的四项，但因为占位状态下抽屉仍需可用，
+ * 所以与它们并列。
+ */
+enum class EditorAction(
+    @StringRes val labelRes: Int,
+    @StringRes val descriptionRes: Int,
+) {
+    COPY(R.string.action_copy, R.string.action_copy_desc),
+    SEARCH(R.string.action_search, R.string.action_search_desc),
+    EXPORT(R.string.action_export, R.string.action_export_desc),
+    CHANGE_TIME(R.string.action_change_time, R.string.action_change_time_desc),
+    BACKUP(R.string.action_backup, R.string.action_backup_desc),
 }
 
 private fun EditorAction.icon(): ImageVector = when (this) {
@@ -70,13 +85,13 @@ fun EditorActionSheet(
 ) {
     val sheetState = rememberModalBottomSheetState()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        SheetBody(title = "日记操作") {
+        SheetBody(title = stringResource(R.string.action_sheet_title)) {
             EditorAction.entries.forEach { action ->
                 ListItem(
-                    headlineContent = { Text(action.label) },
+                    headlineContent = { Text(stringResource(action.labelRes)) },
                     supportingContent = {
                         Text(
-                            action.description,
+                            stringResource(action.descriptionRes),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -100,12 +115,12 @@ fun CopySheet(
     val sheetState = rememberModalBottomSheetState()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        SheetBody(title = "复制日记") {
-            RadioRow("仅正文", !includeHeader) { includeHeader = false }
-            RadioRow("标题 + 正文 + 创建时间", includeHeader) { includeHeader = true }
-            Hint("复制的是 Markdown 源文本，插入的时间、地点与图片都会保留，粘回本应用任意一篇日记都能还原。")
+        SheetBody(title = stringResource(R.string.copy_title)) {
+            RadioRow(stringResource(R.string.copy_body_only), !includeHeader) { includeHeader = false }
+            RadioRow(stringResource(R.string.copy_with_header), includeHeader) { includeHeader = true }
+            Hint(stringResource(R.string.copy_hint))
             SheetActions(
-                confirmLabel = "复制",
+                confirmLabel = stringResource(R.string.common_confirm),
                 onConfirm = { onConfirm(includeHeader) },
                 onDismiss = onDismiss,
             )
@@ -123,16 +138,16 @@ fun ExportSheet(
 ) {
     val sheetState = rememberModalBottomSheetState()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        SheetBody(title = "导出") {
-            SectionLabel("文本")
-            ActionRow("纯文本 (.txt)", "嵌入标记转为可读文字") { onText(Exporter.TextFormat.TXT) }
-            ActionRow("Markdown (.md)", "保留源文本与全部标记") { onText(Exporter.TextFormat.MARKDOWN) }
+        SheetBody(title = stringResource(R.string.export_title)) {
+            SectionLabel(stringResource(R.string.export_section_text))
+            ActionRow(stringResource(R.string.export_txt), stringResource(R.string.export_txt_desc)) { onText(Exporter.TextFormat.TXT) }
+            ActionRow(stringResource(R.string.export_md), stringResource(R.string.export_md_desc)) { onText(Exporter.TextFormat.MARKDOWN) }
 
-            SectionLabel("图片")
-            ActionRow("一张长图", "完整的一屏纵向长图") { onImage(false) }
-            ActionRow("切分的几张短图", "分成固定高度的数张，便于逐张查看") { onImage(true) }
+            SectionLabel(stringResource(R.string.export_section_image))
+            ActionRow(stringResource(R.string.export_long_image), stringResource(R.string.export_long_image_desc)) { onImage(false) }
+            ActionRow(stringResource(R.string.export_sliced_image), stringResource(R.string.export_sliced_image_desc)) { onImage(true) }
 
-            Hint("内容过高的日记会自动切分，避免占用过多内存。")
+            Hint(stringResource(R.string.export_hint))
         }
     }
 }
@@ -150,17 +165,17 @@ fun SearchScopeSheet(
 ) {
     val sheetState = rememberModalBottomSheetState()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        SheetBody(title = "查找范围") {
-            ActionRow("本篇日记", "只在当前编辑的这篇里查找") {
+        SheetBody(title = stringResource(R.string.search_scope_title)) {
+            ActionRow(stringResource(R.string.search_scope_entry), stringResource(R.string.search_scope_entry_desc)) {
                 onPick(SearchViewModel.Scope.CURRENT_ENTRY)
             }
-            ActionRow("本日记本", "在当前打开的日记本内查找") {
+            ActionRow(stringResource(R.string.search_scope_book), stringResource(R.string.search_scope_book_desc)) {
                 onPick(SearchViewModel.Scope.CURRENT_BOOK)
             }
-            ActionRow("所有日记本", "跨全部日记本查找，结果是一次性列表") {
+            ActionRow(stringResource(R.string.search_scope_all), stringResource(R.string.search_scope_all_desc)) {
                 onPick(SearchViewModel.Scope.ALL_BOOKS)
             }
-            Hint("跨日记本查找不会改变当前打开的日记本，关闭结果即结束。")
+            Hint(stringResource(R.string.search_scope_hint))
         }
     }
 }
@@ -249,7 +264,7 @@ private fun SheetActions(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.End,
     ) {
-        TextButton(onClick = onDismiss) { Text("取消") }
+        TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
         TextButton(onClick = onConfirm) { Text(confirmLabel) }
     }
 }

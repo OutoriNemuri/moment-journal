@@ -140,11 +140,13 @@ class EditorViewModel(
      * 样式与嵌入，粘到别处就失去原貌；而 Markdown 源文本粘回本应用任意一篇日记
      * 都能还原。反过来（要纯文本时自行处理）是能做到的，反之则不行。
      */
-    fun copyText(includeHeader: Boolean): String {
+    fun copyText(includeHeader: Boolean, untitledPlaceholder: String): String {
         val body = _body.value
         if (!includeHeader) return body
         return buildString {
-            append(_title.value.ifBlank { "无标题" })
+            // 无标题时的占位文字由界面传入：ViewModel 不是 Composable，
+            // 拿不到 stringResource，也不该为了显示文案而持有 Context。
+            append(_title.value.ifBlank { untitledPlaceholder })
             append('\n')
             append(TimeFormat.isoFromEpoch(_createdAt.value))
             append('\n')
@@ -187,7 +189,9 @@ class EditorViewModel(
      * 为 false 时原样输出 Markdown 源文本（供 .md）。
      */
     fun exportPayload(plainText: Boolean): ExportPayload {
-        val title = _title.value.ifBlank { "无标题" }
+        // 标题保持原样（可能为空）。空标题的显示兜底由界面负责，
+        // 因为「无标题」这三个字需要随语言变化。
+        val title = _title.value
         val body = if (plainText) stripEmbeds(_body.value) else _body.value
         val stamp = TimeFormat.fileStamp(_createdAt.value)
         // 文件名不能含路径分隔符，标题里的 / 会破坏 SAF 的显示名
@@ -196,7 +200,7 @@ class EditorViewModel(
             title = title,
             body = body,
             createdAt = _createdAt.value,
-            suggestedName = "$stamp $safeTitle",
+            suggestedName = if (safeTitle.isBlank()) stamp else "$stamp $safeTitle",
         )
     }
 
@@ -212,8 +216,8 @@ class EditorViewModel(
                 "[" + TimeFormat.displayFromIso(m.groupValues[1]) + "]"
             }
             .replace(Regex("""!\[loc]\(([^,]*),([^,]*),?([^)]*)\)""")) { m ->
-                val name = m.groupValues[3]
-                "[地点 " + (name.ifBlank { m.groupValues[1] + "," + m.groupValues[2] }) + "]"
+                // 地点在纯文本里用坐标表示，不引入需要翻译的词
+                "[" + m.groupValues[3].ifBlank { m.groupValues[1] + "," + m.groupValues[2] } + "]"
             }
             .replace(Regex("""!\[img]\(([^)]*)\)""")) { m ->
                 "[" + m.groupValues[1].substringAfterLast('/') + "]"

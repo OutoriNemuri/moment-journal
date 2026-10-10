@@ -31,10 +31,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nemuri.journal.R
 import com.nemuri.journal.util.TimeFormat
 
 /**
@@ -70,11 +72,11 @@ fun SearchScreen(
                     OutlinedTextField(
                         value = query,
                         onValueChange = viewModel::onQueryChange,
-                        placeholder = { Text("搜索关键词") },
+                        placeholder = { Text(stringResource(R.string.search_hint)) },
                         singleLine = true,
                         trailingIcon = {
                             IconButton(onClick = { viewModel.search() }) {
-                                Icon(Icons.Outlined.Search, contentDescription = "搜索")
+                                Icon(Icons.Outlined.Search, contentDescription = stringResource(R.string.search_action))
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -82,7 +84,7 @@ fun SearchScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
             )
@@ -100,7 +102,7 @@ fun SearchScreen(
                     androidx.compose.material3.FilterChip(
                         selected = scope == s,
                         onClick = { viewModel.onScopeChange(s) },
-                        label = { Text(s.label) },
+                        label = { Text(stringResource(s.labelRes)) },
                     )
                 }
             }
@@ -108,8 +110,8 @@ fun SearchScreen(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             when {
-                !searched -> Centered("输入关键词后按回车或点搜索")
-                results.isEmpty() -> Centered("没有找到匹配的日记")
+                !searched -> Centered(stringResource(R.string.search_prompt))
+                results.isEmpty() -> Centered(stringResource(R.string.search_empty))
                 else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 24.dp),
@@ -147,7 +149,7 @@ private fun SearchResultRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Text(
-            hit.entry.title.ifBlank { "无标题" },
+            hit.entry.title.ifBlank { stringResource(R.string.common_untitled) },
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Medium,
             maxLines = 1,

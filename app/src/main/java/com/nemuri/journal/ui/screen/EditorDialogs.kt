@@ -16,7 +16,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.nemuri.journal.R
 import com.nemuri.journal.util.TimeFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -77,7 +79,7 @@ fun ChangeTimeDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("修改创建时间") },
+        title = { Text(stringResource(R.string.change_time_title)) },
         text = {
             Column {
                 Text(
@@ -89,28 +91,28 @@ fun ChangeTimeDialog(
                     FilterChip(
                         selected = false,
                         onClick = { showDatePicker = true },
-                        label = { Text("选日期") },
+                        label = { Text(stringResource(R.string.change_time_pick_date)) },
                     )
                     FilterChip(
                         selected = false,
                         onClick = { showTimePicker = true },
-                        label = { Text("选时间") },
+                        label = { Text(stringResource(R.string.change_time_pick_time)) },
                     )
                 }
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    "修改后，这篇日记会按新的时间在列表中重新排序，位置变化是正常的。",
+                    stringResource(R.string.change_time_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { onConfirm(millis) }) { Text("确定") } },
+        confirmButton = { TextButton(onClick = { onConfirm(millis) }) { Text(stringResource(R.string.common_confirm)) } },
         dismissButton = {
             TextButton(onClick = {
                 millis = currentMillis   // 允许还原
                 onDismiss()
-            }) { Text("取消") }
+            }) { Text(stringResource(R.string.common_cancel)) }
         },
     )
 }

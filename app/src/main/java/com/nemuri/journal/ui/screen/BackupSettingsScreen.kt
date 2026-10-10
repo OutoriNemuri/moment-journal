@@ -31,8 +31,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nemuri.journal.R
 import com.nemuri.journal.backup.MjbManifest
 import com.nemuri.journal.util.TimeFormat
 
@@ -81,10 +83,10 @@ fun BackupSettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("备份") },
+                title = { Text(stringResource(R.string.backup_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
             )
@@ -97,12 +99,12 @@ fun BackupSettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
         ) {
-            SectionTitle("备份位置")
+            SectionTitle(stringResource(R.string.backup_section_location))
             Text(
                 text = when {
-                    !configured -> "尚未指定"
-                    !directoryUsable -> "所选文件夹已无法访问"
-                    else -> viewModel.backupTreeUri ?: "尚未指定"
+                    !configured -> stringResource(R.string.backup_not_configured)
+                    !directoryUsable -> stringResource(R.string.backup_dir_unreachable)
+                    else -> viewModel.backupTreeUri ?: stringResource(R.string.backup_not_configured)
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = if (!directoryUsable && configured) MaterialTheme.colorScheme.error
@@ -110,28 +112,31 @@ fun BackupSettingsScreen(
             )
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = { dirPicker.launch(null) }) {
-                Text(if (configured) "更换文件夹" else "选择文件夹")
+                Text(
+                    if (configured) stringResource(R.string.backup_change_dir)
+                    else stringResource(R.string.backup_pick_dir)
+                )
             }
 
-            SectionTitle("状态")
+            SectionTitle(stringResource(R.string.backup_section_status))
             Text(
                 text = if (lastBackupAt > 0) {
-                    "上次成功备份：${TimeFormat.listStamp(lastBackupAt)}"
+                    stringResource(R.string.backup_last_success, TimeFormat.listStamp(lastBackupAt))
                 } else {
-                    "尚未成功备份过"
+                    stringResource(R.string.backup_never)
                 },
                 style = MaterialTheme.typography.bodySmall,
             )
             lastError?.let {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "上次失败：$it",
+                    stringResource(R.string.backup_last_failed, it),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
             }
 
-            SectionTitle("操作")
+            SectionTitle(stringResource(R.string.backup_section_actions))
             Button(
                 onClick = {
                     viewModel.backupNow()
@@ -139,7 +144,10 @@ fun BackupSettingsScreen(
                 enabled = configured && !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (busy) "备份中…" else "立即备份")
+                Text(
+                    if (busy) stringResource(R.string.backup_in_progress)
+                    else stringResource(R.string.backup_now)
+                )
             }
 
             Spacer(Modifier.height(8.dp))
@@ -149,11 +157,11 @@ fun BackupSettingsScreen(
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("从归档恢复")
+                Text(stringResource(R.string.backup_restore))
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                "恢复会覆盖当前全部数据，操作前会先展示归档内容供你确认。",
+                stringResource(R.string.backup_restore_hint),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -161,7 +169,9 @@ fun BackupSettingsScreen(
             message?.let {
                 Spacer(Modifier.height(20.dp))
                 Text(it, style = MaterialTheme.typography.bodyMedium)
-                TextButton(onClick = { viewModel.clearMessage() }) { Text("知道了") }
+                TextButton(onClick = { viewModel.clearMessage() }) {
+                    Text(stringResource(R.string.common_got_it))
+                }
             }
 
             Spacer(Modifier.height(40.dp))
@@ -172,20 +182,19 @@ fun BackupSettingsScreen(
     pendingRestore?.let { (uri, manifest) ->
         AlertDialog(
             onDismissRequest = { pendingRestore = null },
-            title = { Text("覆盖当前数据？") },
+            title = { Text(stringResource(R.string.restore_confirm_title)) },
             text = {
                 Column {
-                    Text("将要导入的归档：")
+                    Text(stringResource(R.string.restore_archive_intro))
                     Spacer(Modifier.height(8.dp))
-                    Text("· 备份时间：${TimeFormat.listStamp(manifest.createdAt)}")
-                    Text("· 日记：${manifest.entryCount} 篇")
-                    Text("· 日记本：${manifest.bookCount} 个")
-                    Text("· 图片：${manifest.imageCount} 张")
-                    Text("· 格式版本：${manifest.formatVersion}")
+                    Text("· " + stringResource(R.string.restore_field_time) + "：" + TimeFormat.listStamp(manifest.createdAt))
+                    Text("· " + stringResource(R.string.restore_field_entries) + "：" + manifest.entryCount)
+                    Text("· " + stringResource(R.string.restore_field_books) + "：" + manifest.bookCount)
+                    Text("· " + stringResource(R.string.restore_field_images) + "：" + manifest.imageCount)
+                    Text("· " + stringResource(R.string.restore_field_version) + "：" + manifest.formatVersion)
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        "当前设备上的全部日记将被替换，此操作无法撤销。" +
-                            "建议先做一次备份。",
+                        stringResource(R.string.restore_warning),
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -195,10 +204,12 @@ fun BackupSettingsScreen(
                 TextButton(onClick = {
                     viewModel.restore(uri)
                     pendingRestore = null
-                }) { Text("覆盖") }
+                }) { Text(stringResource(R.string.restore_action)) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingRestore = null }) { Text("取消") }
+                TextButton(onClick = { pendingRestore = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
             },
         )
     }

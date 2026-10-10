@@ -45,10 +45,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nemuri.journal.R
 import com.nemuri.journal.data.db.Book
 import com.nemuri.journal.data.db.Entry
 import com.nemuri.journal.util.TimeFormat
@@ -102,15 +104,15 @@ fun HomeScreen(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(currentBook?.name ?: "时刻日记") },
+                    title = { Text(currentBook?.name ?: stringResource(R.string.app_name)) },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Outlined.Menu, contentDescription = "打开侧栏")
+                            Icon(Icons.Outlined.Menu, contentDescription = stringResource(R.string.home_open_sidebar))
                         }
                     },
                     actions = {
                         IconButton(onClick = onOpenBackupSettings) {
-                            Icon(Icons.Outlined.Settings, contentDescription = "备份设置")
+                            Icon(Icons.Outlined.Settings, contentDescription = stringResource(R.string.home_backup_settings))
                         }
                     },
                 )
@@ -122,7 +124,7 @@ fun HomeScreen(
                     androidx.compose.material3.ExtendedFloatingActionButton(
                         onClick = { viewModel.createEntry(onOpenEntry) },
                         icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                        text = { Text("写日记") },
+                        text = { Text(stringResource(R.string.editor_new_entry)) },
                     )
                 }
             },
@@ -133,8 +135,9 @@ fun HomeScreen(
                 if (!backupConfigured || backupError != null) {
                     BackupWarningBar(
                         isError = backupError != null,
-                        message = backupError?.let { "上次备份失败：$it" }
-                            ?: "备份未配置，日记仅存于本机",
+                        message = backupError?.let {
+                            stringResource(R.string.backup_warning_failed, it)
+                        } ?: stringResource(R.string.backup_warning_unconfigured),
                         onAction = onOpenBackupSettings,
                     )
                 }
@@ -173,8 +176,8 @@ fun HomeScreen(
 
     if (showNewBookDialog) {
         NameInputDialog(
-            title = "新建日记本",
-            label = "名称",
+            title = stringResource(R.string.book_new_title),
+            label = stringResource(R.string.book_name_label),
             onDismiss = { showNewBookDialog = false },
             onConfirm = {
                 viewModel.createBook(it) { id -> viewModel.selectBook(id) }
@@ -185,8 +188,8 @@ fun HomeScreen(
 
     pendingDelete?.let { entry ->
         ConfirmDialog(
-            title = "删除这篇日记？",
-            text = "删除后无法从应用内恢复。若已配置备份，可从 .mjb 归档找回。",
+            title = stringResource(R.string.entry_delete_title),
+            text = stringResource(R.string.entry_delete_body),
             onDismiss = { pendingDelete = null },
             onConfirm = { viewModel.deleteEntry(entry.id); pendingDelete = null },
         )
@@ -221,7 +224,7 @@ private fun Sidebar(
         Column(Modifier.fillMaxSize()) {
             // ---------- 上半段：当前日记本的目录 ----------
             Text(
-                text = "目录",
+                text = stringResource(R.string.sidebar_index),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 28.dp, top = 24.dp, bottom = 4.dp),
@@ -229,7 +232,7 @@ private fun Sidebar(
 
             if (entries.isEmpty()) {
                 Text(
-                    text = "这个日记本还没有日记",
+                    text = stringResource(R.string.sidebar_empty_book),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 28.dp, top = 8.dp),
@@ -242,7 +245,7 @@ private fun Sidebar(
                             label = {
                                 Column {
                                     Text(
-                                        text = entry.title.ifBlank { "无标题" },
+                                        text = entry.title.ifBlank { stringResource(R.string.common_untitled) },
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.bodyMedium,
@@ -270,12 +273,12 @@ private fun Sidebar(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    "日记本",
+                    stringResource(R.string.sidebar_books),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 IconButton(onClick = onCreateBook) {
-                    Icon(Icons.Filled.Add, contentDescription = "新建日记本")
+                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.sidebar_new_book))
                 }
             }
 
@@ -298,7 +301,7 @@ private fun Sidebar(
                                 IconButton(onClick = { onDeleteBookRequest(book) }) {
                                     Icon(
                                         Icons.Outlined.Delete,
-                                        contentDescription = "删除日记本",
+                                        contentDescription = stringResource(R.string.sidebar_delete_book),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
@@ -326,7 +329,7 @@ private fun EntryRow(
         modifier = modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick),
         headlineContent = {
             Text(
-                entry.title.ifBlank { "无标题" },
+                entry.title.ifBlank { stringResource(R.string.common_untitled) },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -368,22 +371,27 @@ private fun DeleteBookDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("删除「${book.name}」？") },
+        title = { Text(stringResource(R.string.book_delete_title, book.name)) },
         text = {
             val n = entryCount
             val moved = fallback?.let { id ->
                 viewModel.books.value.firstOrNull { it.id == id }?.name
             }
+            // 逐段取资源：整句拼接无法翻译 —— 不同语言的语序、量词、
+            // 标点都不同，把它拆成可独立替换的片段才是可翻译的写法。
             Text(
                 buildString {
                     if (n != null && n > 0) {
-                        append("其中的 $n 篇日记将移入")
-                        append(if (moved != null) "「$moved」" else "其他日记本")
-                        append("，不会丢失。\n\n")
+                        val target = if (moved != null) {
+                            stringResource(R.string.book_delete_move_target, moved)
+                        } else {
+                            stringResource(R.string.book_delete_move_elsewhere)
+                        }
+                        append(stringResource(R.string.book_delete_with_entries, n, target))
                     } else {
-                        append("这个日记本里还没有日记。\n\n")
+                        append(stringResource(R.string.book_delete_empty))
                     }
-                    append("日记本本身会被删除，此操作无法撤销。")
+                    append(stringResource(R.string.book_delete_final))
                 }
             )
         },
@@ -394,9 +402,9 @@ private fun DeleteBookDialog(
                     onDismiss()
                 },
                 enabled = fallback != null,
-            ) { Text("删除") }
+            ) { Text(stringResource(R.string.common_delete)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -408,10 +416,10 @@ private fun NoBookState(modifier: Modifier = Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(32.dp),
         ) {
-            Text("还没有日记本", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.home_no_book_title), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             Text(
-                "先在侧栏创建一个日记本，才能开始写日记。",
+                stringResource(R.string.home_no_book_hint),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -424,10 +432,10 @@ private fun NoBookState(modifier: Modifier = Modifier) {
 private fun EmptyBookState(bookName: String, modifier: Modifier = Modifier) {
     Box(modifier, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("「$bookName」里还没有日记", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.home_empty_book_title, bookName), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
             Text(
-                "点击右下角开始记录",
+                stringResource(R.string.home_empty_book_hint),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -446,8 +454,8 @@ fun ConfirmDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { Text(text) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("删除") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(stringResource(R.string.common_delete)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }
 
@@ -474,8 +482,8 @@ fun NameInputDialog(
             TextButton(
                 onClick = { onConfirm(value) },
                 enabled = value.isNotBlank(),
-            ) { Text("确定") }
+            ) { Text(stringResource(R.string.common_confirm)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } },
     )
 }

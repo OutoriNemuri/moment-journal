@@ -73,7 +73,15 @@ data class MjbManifest(
     }
 }
 
-/** 备份/恢复失败的原因。所有失败都必须能被用户看见，不允许静默吞掉。 */
+/**
+ * 备份/恢复失败的原因。所有失败都必须能被用户看见，不允许静默吞掉。
+ *
+ * **这些消息刻意不抽成字符串资源。** 它们是诊断信息，不是产品文案：
+ * 内容面向"哪里出了问题"而非"用户该怎么办"。正确做法是给用户一句统一的
+ * 提示语（"归档无法读取"之类），把具体原因留给日志。
+ * 在完成这个区分之前，不把它们固化成"需要翻译的字符串" ——
+ * 那等于把内部错误原文当成产品文案来翻译。
+ */
 sealed class MjbException(message: String) : Exception(message) {
     class NotAnArchive : MjbException("文件不是有效的 .mjb 归档")
     class MissingManifest : MjbException("归档缺少 manifest.json")

@@ -11,6 +11,7 @@ import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import com.nemuri.journal.R
 import com.nemuri.journal.md.InlineSpan
 import com.nemuri.journal.md.MomentMarkdownParser
 import java.io.File
@@ -192,7 +193,11 @@ class LongImageRenderer(private val context: Context) {
                         } else {
                             // 图片缺失时留一行说明。静默跳过会让导出结果与用户
                             // 预期不符，而他无从察觉缺了什么。
-                            val l = layout("[图片缺失: ${span.relativePath}]", metaPaint, width)
+                            // 长图是离屏渲染，拿不到 Composable 的 stringResource，
+                            // 用 Context 取。缺失提示必须出现在导出的图里 ——
+                            // 静默跳过会让导出结果与用户预期不符，而他无从察觉。
+                            val label = context.getString(R.string.export_missing_image, span.relativePath)
+                            val l = layout(label, metaPaint, width)
                             blocks += Block.Text(l.height.toFloat() + BLOCK_GAP) { c, y -> drawLayout(c, l, y) }
                         }
                     }

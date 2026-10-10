@@ -58,8 +58,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nemuri.journal.R
 import com.nemuri.journal.export.Exporter
 import com.nemuri.journal.md.MomentMarkdown
 import com.nemuri.journal.ui.component.MdBody
@@ -85,6 +87,8 @@ fun EditorScreen(
     onBack: () -> Unit,
     /** 进入查找页。三档范围由查找页自己切换。 */
     onOpenSearch: (SearchViewModel.Scope) -> Unit = {},
+    /** 进入备份设置。备份入口放在功能抽屉里，与其余操作同级。 */
+    onOpenBackupSettings: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -142,9 +146,16 @@ fun EditorScreen(
             val ok = runCatching {
                 context.contentResolver.openOutputStream(uri)?.use { out ->
                     out.write(pending.body.toByteArray(Charsets.UTF_8))
-                } ?: error("无法写入所选位置")
+                } ?: error(context.getString(R.string.export_failed, ""))
             }
-            toast = if (ok.isSuccess) "已导出" else "导出失败：${ok.exceptionOrNull()?.message}"
+            toast = if (ok.isSuccess) {
+                context.getString(R.string.export_done)
+            } else {
+                context.getString(
+                    R.string.export_failed,
+                    ok.exceptionOrNull()?.message ?: "",
+                )
+            }
         }
         pendingTextExport = null
     }
@@ -169,7 +180,7 @@ fun EditorScreen(
                 title = {},
                 navigationIcon = {
                     IconButton(onClick = leave) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 },
                 actions = {
@@ -184,12 +195,13 @@ fun EditorScreen(
                             } else {
                                 Icons.Outlined.Visibility
                             },
-                            contentDescription = if (showPreview) "编辑" else "预览",
+                            contentDescription = if (showPreview) stringResource(R.string.editor_edit)
+                            else stringResource(R.string.editor_preview),
                         )
                     }
                     // 功能抽屉入口，与左上角侧栏按钮同级
                     IconButton(onClick = { showActionSheet = true }) {
-                        Icon(Icons.Outlined.MoreVert, contentDescription = "日记操作")
+                        Icon(Icons.Outlined.MoreVert, contentDescription = stringResource(R.string.home_actions))
                     }
                     SaveIndicator(saveState)
                 },
@@ -213,7 +225,7 @@ fun EditorScreen(
                     .padding(horizontal = 20.dp),
             ) {
                 Text(
-                    "创建于 " + TimeFormat.listStamp(createdAt),
+                    stringResource(R.string.editor_created_at, TimeFormat.listStamp(createdAt)),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
@@ -232,7 +244,7 @@ fun EditorScreen(
                     decorationBox = { inner ->
                         if (title.isEmpty()) {
                             Text(
-                                "标题",
+                                stringResource(R.string.editor_title_hint),
                                 style = MaterialTheme.typography.headlineSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -264,7 +276,7 @@ fun EditorScreen(
                         decorationBox = { inner ->
                             if (body.isEmpty()) {
                                 Text(
-                                    "写点什么…",
+                                    stringResource(R.string.editor_body_hint),
                                     style = TextStyle(
                                         fontSize = 17.sp,
                                         lineHeight = 28.sp,
@@ -302,6 +314,7 @@ fun EditorScreen(
                     EditorAction.SEARCH -> showSearchScope = true
                     EditorAction.EXPORT -> showExportSheet = true
                     EditorAction.CHANGE_TIME -> showChangeTime = true
+                    EditorAction.BACKUP -> onOpenBackupSettings()
                 }
             },
         )
@@ -311,12 +324,20 @@ fun EditorScreen(
         CopySheet(
             onDismiss = { showCopySheet = false },
             onConfirm = { includeHeader ->
-                val text = viewModel.copyText(includeHeader)
+                val text = viewModel.copyText(
+                    includeHeader,
+                    context.getString(R.string.common_untitled),
+                )
                 val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
                     as android.content.ClipboardManager
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("日记", text))
+                // 剪贴板条目的标签。部分系统会显示它，因此也需要可翻译。
+                clipboard.setPrimaryClip(
+                    android.content.ClipData.newPlainText(
+                        context.getString(R.string.app_name), text,
+                    )
+                )
                 showCopySheet = false
-                toast = "已复制到剪贴板"
+                toast = context.getString(R.string.copy_done)
             },
         )
     }
@@ -362,9 +383,9 @@ fun EditorScreen(
                         Exporter.shareFiles(
                             context, r.files, "image/png", payload.title,
                         )
-                        if (r.sliced) toast = "内容较长，已切分为 ${r.files.size} 张"
+                        if (r.sliced) toast = context.getString(R.string.export_sliced_done, r.files.size)
                     }.onFailure {
-                        toast = "导出失败：${it.message}"
+                        toast = context.getString(R.string.export_failed, it.message ?: "")
                     }
                 }
             },
@@ -378,7 +399,7 @@ fun EditorScreen(
             onConfirm = { millis ->
                 viewModel.changeCreatedAt(millis)
                 showChangeTime = false
-                toast = "创建时间已修改，日记已按新时间重新排序"
+                toast = context.getString(R.string.change_time_done)
             },
         )
     }
@@ -398,12 +419,15 @@ private data class TextExport(val body: String)
 private fun SaveIndicator(state: EditorViewModel.SaveState) {
     val (label, icon, tint) = when (state) {
         EditorViewModel.SaveState.SAVED ->
-            Triple("已保存", Icons.Outlined.Done, MaterialTheme.colorScheme.onSurfaceVariant)
+            Triple(stringResource(R.string.editor_save_saved), Icons.Outlined.Done,
+                MaterialTheme.colorScheme.onSurfaceVariant)
         EditorViewModel.SaveState.PENDING ->
-            Triple("保存中…", Icons.Outlined.Bolt, MaterialTheme.colorScheme.onSurfaceVariant)
+            Triple(stringResource(R.string.editor_save_pending), Icons.Outlined.Bolt,
+                MaterialTheme.colorScheme.onSurfaceVariant)
         // 条目已被删除：必须让用户看见，否则他会以为内容还存着
         EditorViewModel.SaveState.MISSING ->
-            Triple("日记已被删除", Icons.Outlined.Delete, MaterialTheme.colorScheme.error)
+            Triple(stringResource(R.string.editor_missing_entry), Icons.Outlined.Delete,
+                MaterialTheme.colorScheme.error)
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -443,8 +467,8 @@ private fun QuickInputBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Start,
         ) {
-            QuickAction(Icons.Filled.Schedule, "时间", enabled, onInsertTime)
-            QuickAction(Icons.Filled.Image, "图片", enabled, onPickImage)
+            QuickAction(Icons.Filled.Schedule, stringResource(R.string.editor_insert_time), enabled, onInsertTime)
+            QuickAction(Icons.Filled.Image, stringResource(R.string.editor_insert_image), enabled, onPickImage)
         }
     }
 }

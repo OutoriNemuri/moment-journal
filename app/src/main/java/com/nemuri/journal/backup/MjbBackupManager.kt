@@ -32,6 +32,10 @@ import java.util.zip.ZipOutputStream
  * 本版**不做**精确定时备份：Android 的 Doze 与后台限制会压制它，
  * 承诺一个做不到的周期只会让用户以为数据安全。
  */
+/**
+ * 本文件中的异常消息与 MjbManifest 中的同类：属诊断信息，不抽资源。
+ * 见 MjbException 的注释。
+ */
 class MjbBackupManager(private val context: Context) {
 
     companion object {

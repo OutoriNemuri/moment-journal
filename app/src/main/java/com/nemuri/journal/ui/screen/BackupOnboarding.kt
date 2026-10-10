@@ -17,8 +17,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.nemuri.journal.R
 
 /**
  * 首次启动引导：要求用户指定一个备份目录。
@@ -51,12 +53,10 @@ fun BackupOnboardingScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("你的日记存放在哪里？", style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.onboarding_title), style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(16.dp))
         Text(
-            text = "时刻日记需要你指定一个文件夹，用来存放备份。\n\n" +
-                "备份是 ZIP 归档，包含全部日记与图片，随时可以导入回来。\n" +
-                "归档会存放在所选文件夹下的 MomentJournal/Backups。",
+            text = stringResource(R.string.onboarding_body),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -67,7 +67,7 @@ fun BackupOnboardingScreen(
             onClick = { picker.launch(null) },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("选择文件夹")
+            Text(stringResource(R.string.onboarding_pick))
         }
         Spacer(Modifier.height(8.dp))
         TextButton(
@@ -76,12 +76,11 @@ fun BackupOnboardingScreen(
                 onFinished()
             },
         ) {
-            Text("稍后再说")
+            Text(stringResource(R.string.onboarding_later))
         }
         Spacer(Modifier.height(16.dp))
         Text(
-            text = "选择「稍后再说」的话，日记将只保存在本机。\n" +
-                "主界面会一直提示这一点，你可以随时在设置里指定目录。",
+            text = stringResource(R.string.onboarding_later_warning),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -100,7 +99,7 @@ fun BackupWarningBar(
     isError: Boolean,
     message: String,
     onAction: () -> Unit,
-    actionLabel: String = "设置",
+    actionLabel: String = stringResource(R.string.backup_warning_action),
 ) {
     Row(
         modifier = Modifier

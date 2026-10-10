@@ -1,10 +1,13 @@
 package com.nemuri.journal.ui.screen
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.nemuri.journal.R
 import com.nemuri.journal.data.db.Entry
+import com.nemuri.journal.R
 import com.nemuri.journal.data.db.EntryWithBookName
 import com.nemuri.journal.data.repo.MomentRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,10 +31,16 @@ class SearchViewModel(
     private val repo: MomentRepository,
 ) : ViewModel() {
 
-    enum class Scope(val label: String) {
-        CURRENT_ENTRY("本篇日记"),
-        CURRENT_BOOK("本日记本"),
-        ALL_BOOKS("所有日记本"),
+    /**
+     * 查找范围。
+     *
+     * 存资源 id 而不是标签字面量：ViewModel 不是 Composable，拿不到
+     * stringResource，也不该为了显示去持有 Context。界面在使用处解析。
+     */
+    enum class Scope(@StringRes val labelRes: Int) {
+        CURRENT_ENTRY(R.string.search_scope_entry),
+        CURRENT_BOOK(R.string.search_scope_book),
+        ALL_BOOKS(R.string.search_scope_all),
     }
 
     private val _query = MutableStateFlow("")

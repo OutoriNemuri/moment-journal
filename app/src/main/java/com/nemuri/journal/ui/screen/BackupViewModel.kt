@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.nemuri.journal.backup.BackupScheduler
+import com.nemuri.journal.R
 import com.nemuri.journal.backup.MjbManifest
 import com.nemuri.journal.data.prefs.JournalPrefs
 import com.nemuri.journal.data.repo.MomentRepository
@@ -67,12 +68,14 @@ class BackupViewModel(
             _onboardingVisible.value = false
             try {
                 val result = scheduler.backupNow()
-                _message.value = "已备份到 ${result.displayName}（${result.entryCount} 篇日记）"
+                _message.value = appContext.getString(
+                    R.string.backup_done, result.displayName, result.entryCount,
+                )
                 _errorState.value = null
             } catch (t: Throwable) {
                 // 首次选择就失败必须说清楚，否则用户以为配好了
-                val reason = t.message ?: "未知原因"
-                _message.value = "备份失败：$reason"
+                val reason = t.message ?: appContext.getString(R.string.backup_unknown_reason)
+                _message.value = appContext.getString(R.string.backup_failed, reason)
                 _errorState.value = reason
             } finally {
                 _busy.value = false
@@ -99,12 +102,14 @@ class BackupViewModel(
             _busy.value = true
             try {
                 val result = scheduler.backupNow()
-                _message.value = "已备份到 ${result.displayName}（${result.entryCount} 篇日记）"
+                _message.value = appContext.getString(
+                    R.string.backup_done, result.displayName, result.entryCount,
+                )
                 _configured.value = prefs.backupConfigured
                 _errorState.value = null
             } catch (t: Throwable) {
-                val reason = t.message ?: "未知原因"
-                _message.value = "备份失败：$reason"
+                val reason = t.message ?: appContext.getString(R.string.backup_unknown_reason)
+                _message.value = appContext.getString(R.string.backup_failed, reason)
                 _errorState.value = reason
             } finally {
                 _busy.value = false
@@ -118,7 +123,7 @@ class BackupViewModel(
         prefs.backupTreeUri = uri.toString()
         _configured.value = true
         _errorState.value = null
-        _message.value = "备份位置已更新"
+        _message.value = appContext.getString(R.string.backup_location_updated)
     }
 
     /**
@@ -135,7 +140,7 @@ class BackupViewModel(
             )
         }.onFailure {
             // 少数设备/来源不支持持久化授权；此时不写入，让「未配置」如实反映
-            _errorState.value = "无法长期保留该文件夹的访问权限，请换一个位置"
+            _errorState.value = appContext.getString(R.string.backup_permission_lost)
         }
     }
 
@@ -152,7 +157,10 @@ class BackupViewModel(
             try {
                 onLoaded(scheduler.inspectArchive(archive))
             } catch (t: Throwable) {
-                _message.value = "无法读取归档：${t.message ?: "未知原因"}"
+                _message.value = appContext.getString(
+                    R.string.backup_archive_unreadable,
+                    t.message ?: appContext.getString(R.string.backup_unknown_reason),
+                )
             }
         }
     }
@@ -164,14 +172,30 @@ class BackupViewModel(
             try {
                 val result = scheduler.restore(archive)
                 _message.value = buildString {
-                    append("已恢复 ${result.restoredEntryCount} 篇日记")
-                    if (result.restoredImageCount > 0) append("、${result.restoredImageCount} 张图片")
+                    // 图片数为 0 时用不含图片的句式，避免出现「已恢复 3 篇日记、0 张图片」
+                    append(
+                        if (result.restoredImageCount > 0) {
+                            appContext.getString(
+                                R.string.backup_restore_done_images,
+                                result.restoredEntryCount,
+                                result.restoredImageCount,
+                            )
+                        } else {
+                            appContext.getString(
+                                R.string.backup_restore_done,
+                                result.restoredEntryCount,
+                            )
+                        }
+                    )
                     if (result.manifestMismatch) {
-                        append("。注意：归档记录的条数与实际不一致，可能不完整")
+                        append(appContext.getString(R.string.backup_restore_mismatch))
                     }
                 }
             } catch (t: Throwable) {
-                _message.value = "恢复失败：${t.message ?: "未知原因"}"
+                _message.value = appContext.getString(
+                    R.string.backup_restore_failed,
+                    t.message ?: appContext.getString(R.string.backup_unknown_reason),
+                )
             } finally {
                 _busy.value = false
             }
