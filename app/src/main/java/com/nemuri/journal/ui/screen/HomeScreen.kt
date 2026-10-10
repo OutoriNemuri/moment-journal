@@ -139,10 +139,13 @@ fun HomeScreen(
                     )
                 }
 
+                // 取出为局部变量，让编译器能智能转换 —— 用 currentBook!! 硬转
+                // 在状态被并发改动时会直接崩溃，而这里只是取个名字显示。
+                val book = currentBook
                 when {
-                    currentBook == null -> NoBookState(Modifier.fillMaxSize())
+                    book == null -> NoBookState(Modifier.fillMaxSize())
                     entries.isEmpty() -> EmptyBookState(
-                        bookName = currentBook!!.name,
+                        bookName = book.name,
                         modifier = Modifier.fillMaxSize(),
                     )
 

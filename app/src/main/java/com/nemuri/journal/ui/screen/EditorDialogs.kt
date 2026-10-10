@@ -45,8 +45,14 @@ fun ChangeTimeDialog(
         android.app.DatePickerDialog(
             androidx.compose.ui.platform.LocalContext.current,
             { _, y, m, d ->
-                millis = displayed.withYear(y).withMonthValue(m + 1).withDayOfMonth(d)
-                    .toInstant().toEpochMilli()
+                // displayed 是 ZonedDateTime，没有 withMonthValue；
+                // 月份用 withMonth（1-12），注意系统选出来的 m 是 0-11。
+                millis = displayed
+                    .withYear(y)
+                    .withMonth(m + 1)
+                    .withDayOfMonth(d)
+                    .toInstant()
+                    .toEpochMilli()
                 showDatePicker = false
             },
             displayed.year, displayed.monthValue - 1, displayed.dayOfMonth,

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.nemuri.journal.data.db.Entry
+import com.nemuri.journal.data.db.EntryWithBookName
 import com.nemuri.journal.data.repo.MomentRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -80,17 +81,20 @@ class SearchViewModel(
                 Scope.CURRENT_ENTRY -> {
                     val entry = repo.findEntry(currentEntryId)
                     if (entry != null && entry.matches(q)) {
-                        listOf(SearchHit(entry, entry.bookId, null, snippet(entry, q)))
+                        // 当前编辑的日记已经属于某个本，bookId 理论上非空；
+                        // 但实体类型仍是 Long?（非空约束推迟到 0.3），
+                        // 这里用 -1 表示「尚未归属」，而不是硬转成非空。
+                        listOf(SearchHit(entry, entry.bookId ?: -1L, null, snippet(entry, q)))
                     } else {
                         emptyList()
                     }
                 }
 
                 Scope.CURRENT_BOOK -> repo.searchInBook(currentBookId, q)
-                    .map { SearchHit(it.entry, it.entry.bookId, it.bookName, snippet(it.entry, q)) }
+                    .map { row -> row.toHit(q) }
 
                 Scope.ALL_BOOKS -> repo.searchAll(q)
-                    .map { SearchHit(it.entry, it.entry.bookId, it.bookName, snippet(it.entry, q)) }
+                    .map { row -> row.toHit(q) }
             }
             _results.value = hits
             _searched.value = true
@@ -130,3 +134,18 @@ data class SearchHit(
 /** 标题或正文是否包含关键词。 */
 private fun Entry.matches(query: String): Boolean =
     title.contains(query, ignoreCase = true) || body.contains(query, ignoreCase = true)
+
+/**
+ * 查库结果转为界面用的命中项。
+ *
+ * `Entry.bookId` 仍是 `Long?`（非空约束推迟到 0.3），而 [SearchHit.bookId]
+ * 是非空 —— 用 -1 表示「尚未归属」，而不是 `!!` 硬转：
+ * 强制解包在数据异常时会直接崩溃，而这里只用于展示，没有必要冒那个风险。
+ */
+private fun EntryWithBookName.toHit(query: String): SearchHit =
+    SearchHit(
+        entry = entry,
+        bookId = entry.bookId ?: -1L,
+        bookName = bookName,
+        snippet = SearchViewModel.snippet(entry, query),
+    )

@@ -171,10 +171,10 @@ class LongImageRenderer(private val context: Context) {
 
         if (title.isNotBlank()) {
             val l = layout(title, titlePaint, width)
-            blocks += Block.Text(l.height + BLOCK_GAP) { c, y -> drawLayout(c, l, y) }
+            blocks += Block.Text(l.height.toFloat() + BLOCK_GAP) { c, y -> drawLayout(c, l, y) }
         }
         val metaLayout = layout(meta, metaPaint, width)
-        blocks += Block.Text(metaLayout.height + BLOCK_GAP) { c, y -> drawLayout(c, metaLayout, y) }
+        blocks += Block.Text(metaLayout.height.toFloat() + BLOCK_GAP) { c, y -> drawLayout(c, metaLayout, y) }
 
         MomentMarkdownParser.parse(body).lines.forEach { line ->
             if (line.raw.isBlank()) {
@@ -193,24 +193,24 @@ class LongImageRenderer(private val context: Context) {
                             // 图片缺失时留一行说明。静默跳过会让导出结果与用户
                             // 预期不符，而他无从察觉缺了什么。
                             val l = layout("[图片缺失: ${span.relativePath}]", metaPaint, width)
-                            blocks += Block.Text(l.height + BLOCK_GAP) { c, y -> drawLayout(c, l, y) }
+                            blocks += Block.Text(l.height.toFloat() + BLOCK_GAP) { c, y -> drawLayout(c, l, y) }
                         }
                     }
 
                     is InlineSpan.Time -> {
                         val l = layout(span.isoText, metaPaint, width)
-                        blocks += Block.Text(l.height + BLOCK_GAP / 2) { c, y -> drawLayout(c, l, y) }
+                        blocks += Block.Text(l.height.toFloat() + BLOCK_GAP / 2) { c, y -> drawLayout(c, l, y) }
                     }
 
                     is InlineSpan.Location -> {
                         val label = span.name.ifEmpty { "${span.latitude},${span.longitude}" }
                         val l = layout(label, metaPaint, width)
-                        blocks += Block.Text(l.height + BLOCK_GAP / 2) { c, y -> drawLayout(c, l, y) }
+                        blocks += Block.Text(l.height.toFloat() + BLOCK_GAP / 2) { c, y -> drawLayout(c, l, y) }
                     }
 
                     is InlineSpan.Text -> {
                         val l = layout(span.text, bodyPaint, width)
-                        blocks += Block.Text(l.height) { c, y -> drawLayout(c, l, y) }
+                        blocks += Block.Text(l.height.toFloat()) { c, y -> drawLayout(c, l, y) }
                     }
 
                     is InlineSpan.Styled -> {
@@ -219,7 +219,7 @@ class LongImageRenderer(private val context: Context) {
                             p.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                         }
                         val l = layout(span.text, p, width)
-                        blocks += Block.Text(l.height) { c, y ->
+                        blocks += Block.Text(l.height.toFloat()) { c, y ->
                             drawLayout(c, l, y)
                             if (span.styles.contains(InlineSpan.Style.UNDERLINE) ||
                                 span.styles.contains(InlineSpan.Style.STRIKETHROUGH)

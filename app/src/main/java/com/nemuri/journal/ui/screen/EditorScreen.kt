@@ -37,10 +37,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -97,10 +102,24 @@ fun EditorScreen(
     var showSearchScope by remember { mutableStateOf(false) }
     var showChangeTime by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    /**
+     * 提示的唯一出口。
+     *
+     * 变化时交给 SnackbarHost 显示，显示结束（或超时）后清空状态 ——
+     * 清空是必要的，否则同一条消息再次设置时状态没变化，不会重新触发。
+     */
+    LaunchedEffect(toast) {
+        val message = toast ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
+        toast = null
+    }
 
     // 待写入的导出内容。SAF 的 CreateDocument 会先返回，用户选完位置才回调，
-    // 因此内容要先暂存起来。
-    var pendingTextExport by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // 因此内容要先暂存起来。用具名类型而不是 Pair：Pair 的 first/second
+    // 在调用处看不出含义，已经因此写错过一次。
+    var pendingTextExport by remember { mutableStateOf<TextExport?>(null) }
 
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -122,7 +141,7 @@ fun EditorScreen(
         if (uri != null && pending != null) {
             val ok = runCatching {
                 context.contentResolver.openOutputStream(uri)?.use { out ->
-                    out.write(pending.content.toByteArray(Charsets.UTF_8))
+                    out.write(pending.body.toByteArray(Charsets.UTF_8))
                 } ?: error("无法写入所选位置")
             }
             toast = if (ok.isSuccess) "已导出" else "导出失败：${ok.exceptionOrNull()?.message}"
@@ -140,6 +159,11 @@ fun EditorScreen(
     BackHandler { leave() }
 
     Scaffold(
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(modifier = Modifier.padding(16.dp)) { Text(data.visuals.message) }
+            }
+        },
         topBar = {
             TopAppBar(
                 title = {},
@@ -315,7 +339,8 @@ fun EditorScreen(
                 showExportSheet = false
                 val payload = viewModel.exportPayload(plainText = format == Exporter.TextFormat.TXT)
                 // 内容暂存，等用户选完保存位置再写入
-                pendingTextExport = payload.suggestedName + "." + format.extension to payload.body
+                // 文件名交给 SAF 的 CreateDocument，暂存的只是内容
+                pendingTextExport = TextExport(body = payload.body)
                 textExporter.launch(payload.suggestedName + "." + format.extension)
             },
             onImage = { slice ->
@@ -358,16 +383,16 @@ fun EditorScreen(
         )
     }
 
-    toast?.let { message ->
-        LaunchedEffect(message) {
-            kotlinx.coroutines.delay(2400)
-            toast = null
-        }
-        androidx.compose.material3.Snackbar(
-            modifier = Modifier.padding(16.dp),
-        ) { Text(message) }
-    }
 }
+
+/**
+ * 待写入的导出内容。
+ *
+ * 只存正文，不存文件名 —— 文件名已经在 CreateDocument 时交给系统了，
+ * 这里再存一份就会有两个来源，迟早不同步。
+ * 用具名类型而非 Pair：Pair 的 first/second 在调用处看不出含义。
+ */
+private data class TextExport(val body: String)
 
 @Composable
 private fun SaveIndicator(state: EditorViewModel.SaveState) {
