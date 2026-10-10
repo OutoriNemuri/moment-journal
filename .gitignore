@@ -1,0 +1,16 @@
+# 编辑器与 IDE
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# 密钥与签名
+*.jks
+*.keystore
+keystore.properties
+secrets.properties
