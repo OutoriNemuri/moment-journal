@@ -218,8 +218,34 @@ class MjbBackupManager(private val context: Context) {
         }
     }
 
-    /** 解压到暂存区并读取 manifest。此处不做任何破坏性操作。 */
-    private fun extractTo(archive: Uri, dest: File): MjbManifest {
+    /**
+     * 只读取归档的清单，不落任何数据。
+     *
+     * 用于「先把归档内容展示给用户看过，再让他决定是否覆盖现有数据」。
+     * 与 [restore] 共用同一套版本校验（见 [validateManifest]），
+     * 避免出现「预览说能读、恢复却说版本不支持」这种自相矛盾。
+     */
+    suspend fun readManifest(archive: Uri): MjbManifest = withContext(Dispatchers.IO) {
+        val staging = File(context.cacheDir, "inspect-${System.currentTimeMillis()}")
+        staging.mkdirs()
+        try {
+            extractTo(archive, staging, extractPayload = false)
+        } finally {
+            staging.deleteRecursively()
+        }
+    }
+
+    /**
+     * 解压到暂存区并读取 manifest。
+     *
+     * [extractPayload] 为 false 时只读清单、不写出任何文件，
+     * 供 [readManifest] 做无副作用的预览。
+     */
+    private fun extractTo(
+        archive: Uri,
+        dest: File,
+        extractPayload: Boolean = true,
+    ): MjbManifest {
         var manifest: MjbManifest? = null
         val input: InputStream = context.contentResolver.openInputStream(archive)
             ?: throw MjbException.NotAnArchive()
@@ -257,13 +283,13 @@ class MjbBackupManager(private val context: Context) {
                         }
                     }
 
-                    name.startsWith(ENTRY_IMAGES_PREFIX) -> {
+                    extractPayload && name.startsWith(ENTRY_IMAGES_PREFIX) -> {
                         val file = File(dest, name)
                         file.parentFile?.mkdirs()
                         file.outputStream().use { zip.copyTo(it, DEFAULT_BUFFER) }
                     }
 
-                    name == ENTRY_DB -> {
+                    extractPayload && name == ENTRY_DB -> {
                         File(dest, ENTRY_DB).outputStream().use { zip.copyTo(it, DEFAULT_BUFFER) }
                     }
 
@@ -275,10 +301,17 @@ class MjbBackupManager(private val context: Context) {
             if (!sawAnyEntry) throw MjbException.NotAnArchive()
         }
 
+        return validateManifest(manifest)
+    }
+
+    /** 清单必须存在、有版本号，且不高于本应用能读的上限。 */
+    private fun validateManifest(manifest: MjbManifest?): MjbManifest {
         val m = manifest ?: throw MjbException.MissingManifest()
         if (m.formatVersion <= 0) throw MjbException.BadManifest("缺少 formatVersion")
         if (m.formatVersion > MjbManifest.MAX_READABLE_FORMAT_VERSION) {
-            throw MjbException.UnsupportedVersion(m.formatVersion, MjbManifest.MAX_READABLE_FORMAT_VERSION)
+            throw MjbException.UnsupportedVersion(
+                m.formatVersion, MjbManifest.MAX_READABLE_FORMAT_VERSION,
+            )
         }
         return m
     }

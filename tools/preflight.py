@@ -441,6 +441,71 @@ def check_docs():
         warn("docs", f"README does not mention version {ver.group(1)}")
 
 
+# ---------------------------------------------------------------- 9. identity refs
+
+def check_object_member_refs():
+    """Catch `SomeObject.member` used as a compile-time reference.
+
+    A Kotlin `const val` and a default argument both need a compile-time
+    constant. Fetching it through an anonymous `object : Migration(...)` or a
+    regular `object` instance is not allowed and fails to compile. This bug
+    was already shipped once.
+    """
+    # Collect constants that live inside an ANONYMOUS object expression,
+    # e.g. `val MIGRATION_1_2 = object : Migration(1, 2) { const val X = ... }`.
+    # Referencing those as `MIGRATION_1_2.X` does not compile. A named
+    # `object Routes { const val HOME = ... }` is fine and must NOT be flagged,
+    # since `Routes.HOME` is an ordinary expression.
+    objects = {}
+    for f in ROOT.rglob("*.kt"):
+        if "/build/" in str(f):
+            continue
+        t = f.read_text(encoding="utf-8")
+        # `<name> = object : ...`  (anonymous object assigned to a binding)
+        for m in re.finditer(r"\bval\s+(\w+)\s*(?::[\w<>?., ]+)?\s*=\s*object\s*:", t):
+            body_start = t.index("{", m.end()) if "{" in t[m.end():m.end()+400] else None
+            depth, i = 1, body_start
+            while i < len(t) and depth > 0:
+                if t[i] == "{":
+                    depth += 1
+                elif t[i] == "}":
+                    depth -= 1
+                i += 1
+            body = t[body_start:i]
+            consts = set(re.findall(r"\bconst\s+val\s+(\w+)", body))
+            objects[m.group(1)] = consts
+
+    for f in ROOT.rglob("*.kt"):
+        if "/build/" in str(f):
+            continue
+        t = f.read_text(encoding="utf-8")
+        for obj, consts in objects.items():
+            for c in consts:
+                pat = re.compile(r"\b" + obj + r"\." + c + r"\b")
+                for m in pat.finditer(t):
+                    line = t[:m.start()].count("\n") + 1
+                    fail("kotlin",
+                         f"{rel(f)}:{line} references {obj}.{c}; a const should be "
+                         f"imported as a top-level name or placed in a companion object")
+
+
+def check_flow_collect():
+    """`collectAsStateWithLifecycle` needs the lifecycle-runtime-compose artifact."""
+    uses = False
+    for f in ROOT.rglob("*.kt"):
+        if "/build/" in str(f):
+            continue
+        if "collectAsStateWithLifecycle" in f.read_text(encoding="utf-8"):
+            uses = True
+            break
+    if not uses:
+        return
+    build = ROOT / "app" / "build.gradle.kts"
+    if build.exists() and "lifecycle-runtime-compose" not in build.read_text(encoding="utf-8"):
+        fail("deps", "collectAsStateWithLifecycle is used but "
+                     "androidx.lifecycle:lifecycle-runtime-compose is not declared")
+
+
 # ---------------------------------------------------------------- main
 
 def main():
@@ -453,6 +518,8 @@ def main():
     check_yaml()
     check_manifest()
     check_docs()
+    check_object_member_refs()
+    check_flow_collect()
 
     print("=" * 68)
     print("pre-push validation")

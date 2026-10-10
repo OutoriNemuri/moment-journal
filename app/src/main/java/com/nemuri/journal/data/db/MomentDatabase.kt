@@ -9,7 +9,7 @@ import java.io.File
 
 @Database(
     entities = [Book::class, Entry::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class MomentDatabase : RoomDatabase() {
@@ -36,7 +36,7 @@ abstract class MomentDatabase : RoomDatabase() {
                 .build()
         }
 
-        private val MIGRATIONS: Array<Migration> = arrayOf()
+        private val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2)
 
         /** 供恢复流程使用：关闭单例并释放文件句柄。 */
         fun closeForRestore() {

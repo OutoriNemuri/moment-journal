@@ -3,6 +3,7 @@ package com.nemuri.journal.data.db
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
@@ -11,9 +12,13 @@ interface MomentDao {
 
     // ---------- 日记 ----------
 
-    /** 按日记本过滤；[bookId] 为 null 时返回全部。 */
-    @Query("SELECT * FROM entries WHERE (:bookId IS NULL OR book_id = :bookId) ORDER BY created_at DESC")
-    fun observeEntriesInBook(bookId: Long?): Flow<List<Entry>>
+    /**
+     * 某个日记本内的日记，时间倒序。
+     *
+     * 0.2 起日记本即容器，[bookId] 不再接受 null：主界面永远属于某一个日记本。
+     */
+    @Query("SELECT * FROM entries WHERE book_id = :bookId ORDER BY created_at DESC")
+    fun observeEntriesInBook(bookId: Long): Flow<List<Entry>>
 
     @Query("SELECT * FROM entries WHERE id = :id")
     fun observeEntry(id: Long): Flow<Entry?>
@@ -30,15 +35,27 @@ interface MomentDao {
     @Query("DELETE FROM entries WHERE id = :id")
     suspend fun deleteEntry(id: Long)
 
+    /** 把某个日记本的全部日记迁到另一个本。用于删除日记本之前。 */
+    @Query("UPDATE entries SET book_id = :toBookId WHERE book_id = :fromBookId")
+    suspend fun moveEntries(fromBookId: Long, toBookId: Long)
+
     // ---------- 日记本 ----------
 
     @Query("SELECT * FROM books ORDER BY sort_order ASC, created_at ASC")
     fun observeBooks(): Flow<List<Book>>
 
+    @Query("SELECT * FROM books WHERE id = :id")
+    fun observeBook(id: Long): Flow<Book?>
+
+    @Query("SELECT * FROM books WHERE id = :id")
+    suspend fun findBook(id: Long): Book?
+
+    @Query("SELECT * FROM books ORDER BY created_at ASC LIMIT 1")
+    suspend fun firstBook(): Book?
+
     @Insert
     suspend fun insertBook(book: Book): Long
 
-    /** 删除日记本。日记通过外键 SET NULL 变为未分类，不会被删除。 */
     @Query("DELETE FROM books WHERE id = :id")
     suspend fun deleteBook(id: Long)
 
@@ -52,4 +69,30 @@ interface MomentDao {
 
     @Query("SELECT COUNT(*) FROM books")
     suspend fun countBooks(): Int
+
+    /**
+     * 删除一个日记本，并把它的日记迁往 [fallbackBookId]。
+     *
+     * 这一步是必需的，不是防御性代码：0.2 的外键仍是 `SET NULL`（非空约束推迟到 0.3），
+     * 直接删本会让其中的日记变成无归属 —— 而 0.2 的界面已经不再有「全部日记」入口，
+     * 那些日记会彻底看不见。所以删本之前必须先搬走日记。
+     *
+     * 整个操作在一个事务内，避免出现「日记搬走了但本还在」的中间状态。
+     */
+    @Transaction
+    suspend fun deleteBookMovingEntriesTo(bookId: Long, fallbackBookId: Long) {
+        require(bookId != fallbackBookId) { "不能把日记迁往正在删除的日记本" }
+        moveEntries(fromBookId = bookId, toBookId = fallbackBookId)
+        deleteBook(bookId)
+    }
+
+    /** 确保至少存在一个日记本，返回其 id。为空则创建一个。 */
+    @Transaction
+    suspend fun ensureAtLeastOneBook(name: String, now: Long): Long {
+        if (countBooks() > 0) {
+            val existing = firstBook()
+            if (existing != null) return existing.id
+        }
+        return insertBook(Book(name = name, createdAt = now))
+    }
 }
