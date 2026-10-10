@@ -332,7 +332,6 @@ fun EditorScreen(
             }
 
             QuickInputBar(
-                enabled = saveState != EditorViewModel.SaveState.MISSING,
                 onInsertTime = {
                     viewModel.onBodyChange(
                         body + MomentMarkdown.timeToken(TimeFormat.isoNow()) + " "
@@ -464,10 +463,8 @@ private fun SaveIndicator(state: EditorViewModel.SaveState) {
         EditorViewModel.SaveState.PENDING ->
             Triple(stringResource(R.string.editor_save_pending), Icons.Outlined.Bolt,
                 MaterialTheme.colorScheme.onSurfaceVariant)
-        // 条目已被删除：必须让用户看见，否则他会以为内容还存着
-        EditorViewModel.SaveState.MISSING ->
-            Triple(stringResource(R.string.editor_missing_entry), Icons.Outlined.Delete,
-                MaterialTheme.colorScheme.error)
+        // 「条目已被删除」不在这里 —— 那是加载状态，由 EditorLoadingScreen 呈现。
+        // 保存状态只表达"改动存了没有"，两种值就够了。
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -492,8 +489,14 @@ private fun SaveIndicator(state: EditorViewModel.SaveState) {
  * 本版只放时间与图片：地点需要权限与地理编码，见 docs/BETA-0.1-BUILD-1.md 的外推表。
  */
 @Composable
+/**
+ * 键盘上方的快捷输入栏。
+ *
+ * 不再需要 enabled 参数：此前用它表达"没有日记时不可用"，
+ * 但现在整块编辑器已被 LoadState 挡在前面 —— 能走到这里就一定有一篇日记。
+ * 保留一个恒为 true 的开关只会误导。
+ */
 private fun QuickInputBar(
-    enabled: Boolean,
     onInsertTime: () -> Unit,
     onPickImage: () -> Unit,
 ) {
@@ -507,8 +510,8 @@ private fun QuickInputBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Start,
         ) {
-            QuickAction(Icons.Filled.Schedule, stringResource(R.string.editor_insert_time), enabled, onInsertTime)
-            QuickAction(Icons.Filled.Image, stringResource(R.string.editor_insert_image), enabled, onPickImage)
+            QuickAction(Icons.Filled.Schedule, stringResource(R.string.editor_insert_time), onInsertTime)
+            QuickAction(Icons.Filled.Image, stringResource(R.string.editor_insert_image), onPickImage)
         }
     }
 }
@@ -517,10 +520,9 @@ private fun QuickInputBar(
 private fun QuickAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    IconButton(onClick = onClick, enabled = enabled) {
+    IconButton(onClick = onClick) {
         Icon(icon, contentDescription = label)
     }
 }

@@ -443,6 +443,104 @@ def check_docs():
 
 # ---------------------------------------------------------------- 9. identity refs
 
+def check_missing_imports():
+    """Flag Compose symbols that are *called* but whose import is absent.
+
+    Removing an import together with the code that justified it produced
+    four errors in a single CI run, so this is worth checking. The hard part
+    is telling the composable `Text(...)` from the data class `Text`, or
+    `height` the Modifier extension from `height` a property name.
+
+    The rule used here: only flag a symbol when it appears in **call
+    position with a capitalised name** (so `Text(`, `Column(`) or as a
+    `Modifier.<name>(` extension. That excludes plain identifiers, property
+    accesses and type annotations, which were the entire false-positive set
+    when this was first attempted by name matching alone.
+    """
+    CALLED = {
+        "Text": "androidx.compose.material3.Text",
+        "TextButton": "androidx.compose.material3.TextButton",
+        "Button": "androidx.compose.material3.Button",
+        "OutlinedButton": "androidx.compose.material3.OutlinedButton",
+        "IconButton": "androidx.compose.material3.IconButton",
+        "Icon": "androidx.compose.material3.Icon",
+        "ListItem": "androidx.compose.material3.ListItem",
+        "Scaffold": "androidx.compose.material3.Scaffold",
+        "TopAppBar": "androidx.compose.material3.TopAppBar",
+        "AlertDialog": "androidx.compose.material3.AlertDialog",
+        "RadioButton": "androidx.compose.material3.RadioButton",
+        "Snackbar": "androidx.compose.material3.Snackbar",
+        "SnackbarHost": "androidx.compose.material3.SnackbarHost",
+        "HorizontalDivider": "androidx.compose.material3.HorizontalDivider",
+        "OutlinedTextField": "androidx.compose.material3.OutlinedTextField",
+        "ModalBottomSheet": "androidx.compose.material3.ModalBottomSheet",
+        "ModalNavigationDrawer": "androidx.compose.material3.ModalNavigationDrawer",
+        "ModalDrawerSheet": "androidx.compose.material3.ModalDrawerSheet",
+        "NavigationDrawerItem": "androidx.compose.material3.NavigationDrawerItem",
+        "Column": "androidx.compose.foundation.layout.Column",
+        "Row": "androidx.compose.foundation.layout.Row",
+        "Box": "androidx.compose.foundation.layout.Box",
+        "Spacer": "androidx.compose.foundation.layout.Spacer",
+        "LazyColumn": "androidx.compose.foundation.lazy.LazyColumn",
+        "AnimatedVisibility": "androidx.compose.animation.AnimatedVisibility",
+        "remember": "androidx.compose.runtime.remember",
+        "mutableStateOf": "androidx.compose.runtime.mutableStateOf",
+        "rememberCoroutineScope": "androidx.compose.runtime.rememberCoroutineScope",
+        "LaunchedEffect": "androidx.compose.runtime.LaunchedEffect",
+        "derivedStateOf": "androidx.compose.runtime.derivedStateOf",
+        "stringResource": "androidx.compose.ui.res.stringResource",
+    }
+    # Modifier extension functions: `Modifier.padding(`, `.fillMaxWidth(`
+    MODIFIER_EXT = {
+        "padding": "androidx.compose.foundation.layout.padding",
+        "fillMaxWidth": "androidx.compose.foundation.layout.fillMaxWidth",
+        "fillMaxSize": "androidx.compose.foundation.layout.fillMaxSize",
+        "height": "androidx.compose.foundation.layout.height",
+        "heightIn": "androidx.compose.foundation.layout.heightIn",
+        "width": "androidx.compose.foundation.layout.width",
+        "size": "androidx.compose.foundation.layout.size",
+        "clickable": "androidx.compose.foundation.clickable",
+        "background": "androidx.compose.foundation.background",
+        "verticalScroll": "androidx.compose.foundation.verticalScroll",
+        "imePadding": "androidx.compose.foundation.layout.imePadding",
+        "navigationBarsPadding": "androidx.compose.foundation.layout.navigationBarsPadding",
+    }
+
+    for f in ROOT.rglob("*.kt"):
+        if "/build/" in str(f):
+            continue
+        text = f.read_text(encoding="utf-8")
+        lines = text.split("\n")
+        has = {l[len("import "):].strip() for l in lines if l.startswith("import ")}
+        # strip comment lines so documentation examples do not count
+        body = "\n".join(
+            l for l in lines
+            if not l.startswith("import ") and not l.strip().startswith(("*", "//", "/*"))
+        )
+
+        for symbol, imp in CALLED.items():
+            if imp in has:
+                continue
+            # 只认**未限定**的调用：`Text(` 算，`Foo.Text(` 与
+            # `androidx.compose.runtime.LaunchedEffect(` 不算 ——
+            # 前者是嵌套类构造，后者是写全了包名，都不需要 import。
+            if not re.search(r"(?<![\w.])" + symbol + r"\s*[({]", body):
+                continue
+            # 本文件声明过同名类型就不必 import —— 包括嵌套声明，
+            # 因此不限定行首缩进（`data class Text(` 可能缩进在 sealed interface 内）。
+            if re.search(r"\b(?:class|data class|object|interface|enum class)\s+"
+                         + symbol + r"\b", text):
+                continue
+            fail("kotlin", f"{rel(f)} calls {symbol}( but does not import {imp}")
+
+        for name, imp in MODIFIER_EXT.items():
+            if imp in has:
+                continue
+            if not re.search(r"(?:Modifier|\.)\s*" + name + r"\s*\(", body):
+                continue
+            fail("kotlin", f"{rel(f)} uses Modifier.{name}( but does not import {imp}")
+
+
 def check_mechanical_file_damage():
     """Catch damage left behind by scripted file edits.
 
@@ -554,6 +652,7 @@ def main():
     check_object_member_refs()
     check_flow_collect()
     check_mechanical_file_damage()
+    check_missing_imports()
 
     print("=" * 68)
     print("pre-push validation")

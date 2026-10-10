@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
@@ -241,7 +242,13 @@ private fun SectionLabel(text: String) {
     )
 }
 
-/** 点击即执行的行。 */
+/**
+ * 点击即执行的行，带一句说明。
+ *
+ * 一级抽屉改成了双列网格（功能入口，无说明），但**二级抽屉保持这种带说明的行**：
+ * 那里列的是选项（导出格式、查找范围），选项之间的差别需要一句话讲清，
+ * 而且它们是纵向列表而非可扫视的图标网格。两者形态不同是因为用途不同。
+ */
 @Composable
 private fun ActionRow(label: String, description: String, onClick: () -> Unit) {
     ListItem(
