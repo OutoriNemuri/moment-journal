@@ -16,9 +16,6 @@ import com.nemuri.journal.R
 import com.nemuri.journal.data.db.Book
 
 @OptIn(ExperimentalFoundationApi::class)
-@Composable
-private 
-
 /**
  * 删除日记本的确认框。
  *
@@ -26,7 +23,7 @@ private
  * 用户按 0.1 的习惯操作时，这条文案是他唯一的保护。
  */
 @Composable
-private fun DeleteBookDialog(
+fun DeleteBookDialog(
     book: Book,
     viewModel: HomeViewModel,
     onDismiss: () -> Unit,
@@ -78,13 +75,7 @@ private fun DeleteBookDialog(
 }
 
 /** 一个日记本都没有。理论上不该出现（启动时会自动建一个），但必须处理，否则界面空白无解释。 */
-@Composable
-private 
-
 /** 有当前日记本，但本内还没有日记。 */
-@Composable
-private 
-
 @Composable
 fun ConfirmDialog(
     title: String,

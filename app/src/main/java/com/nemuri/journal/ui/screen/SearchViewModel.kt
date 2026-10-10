@@ -7,7 +7,6 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.nemuri.journal.R
 import com.nemuri.journal.data.db.Entry
-import com.nemuri.journal.R
 import com.nemuri.journal.data.db.EntryWithBookName
 import com.nemuri.journal.data.repo.MomentRepository
 import kotlinx.coroutines.flow.MutableStateFlow

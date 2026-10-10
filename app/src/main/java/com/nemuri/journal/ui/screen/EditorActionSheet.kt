@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Schedule
@@ -74,6 +75,8 @@ private fun EditorAction.icon(): ImageVector = when (this) {
     EditorAction.SEARCH -> Icons.Outlined.Search
     EditorAction.EXPORT -> Icons.Outlined.FileDownload
     EditorAction.CHANGE_TIME -> Icons.Outlined.Schedule
+    // 备份：用云上传表示「存到设备之外」，与「导出」的下载箭头区分开
+    EditorAction.BACKUP -> Icons.Outlined.CloudUpload
 }
 
 /** 一级抽屉：四项功能入口。 */

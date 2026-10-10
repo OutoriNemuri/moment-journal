@@ -443,6 +443,39 @@ def check_docs():
 
 # ---------------------------------------------------------------- 9. identity refs
 
+def check_mechanical_file_damage():
+    """Catch damage left behind by scripted file edits.
+
+    Two kinds have actually happened while splitting files:
+      * a duplicate import (the same line inserted twice)
+      * an orphaned declaration head such as a bare `@Composable` followed by
+        `private` with no function after it, left over when a function body
+        was cut out by a regex
+    """
+    for f in ROOT.rglob("*.kt"):
+        if "/build/" in str(f):
+            continue
+        text = f.read_text(encoding="utf-8")
+
+        imports = re.findall(r"^import\s+[\w.]+$", text, re.M)
+        dupes = sorted({i for i in imports if imports.count(i) > 1})
+        if dupes:
+            fail("kotlin", f"{rel(f)} has duplicate imports: {dupes}")
+
+        # a declaration head with no name after it
+        for m in re.finditer(r"^(private|internal|public)\s*$", text, re.M):
+            line = text[:m.start()].count("\n") + 1
+            fail("kotlin",
+                 f"{rel(f)}:{line} has a dangling visibility modifier with no declaration; "
+                 f"likely an orphaned fragment from a scripted edit")
+
+        # `@Composable` on the last line, or directly followed by another annotation
+        for m in re.finditer(r"@Composable\s*\n\s*@", text):
+            line = text[:m.start()].count("\n") + 1
+            fail("kotlin",
+                 f"{rel(f)}:{line} has stacked annotations with no declaration between them")
+
+
 def check_object_member_refs():
     """Catch `SomeObject.member` used as a compile-time reference.
 
@@ -520,6 +553,7 @@ def main():
     check_docs()
     check_object_member_refs()
     check_flow_collect()
+    check_mechanical_file_damage()
 
     print("=" * 68)
     print("pre-push validation")
