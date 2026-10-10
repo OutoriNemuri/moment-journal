@@ -187,6 +187,14 @@ class BackupViewModel(
     suspend fun verifyDirectory(): Boolean = scheduler.isDirectoryUsable()
 
     companion object {
+        /**
+         * 构造工厂。
+         *
+         * context 从 [prefs] 拿不到，而 ViewModel 需要在恢复授权时使用
+         * ContentResolver，所以由调用方传一个 Context 进来。
+         * 注意：本方法运行在 @Composable 作用域之外，不要在里面引用
+         * Activity 的成员。
+         */
         fun factory(
             context: android.content.Context,
             repo: MomentRepository,

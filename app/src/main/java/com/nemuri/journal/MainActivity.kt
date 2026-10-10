@@ -47,7 +47,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MomentJournalTheme {
-                JournalApp(repository, prefs, scheduler)
+                // applicationContext 只能在 Activity 作用域内取得，
+                // 顶层 @Composable 拿不到它，所以在这里传进去。
+                JournalApp(
+                    appContext = applicationContext,
+                    repository = repository,
+                    prefs = prefs,
+                    scheduler = scheduler,
+                )
             }
         }
     }
@@ -68,13 +75,14 @@ private object Routes {
 
 @Composable
 private fun JournalApp(
+    appContext: android.content.Context,
     repository: MomentRepository,
     prefs: JournalPrefs,
     scheduler: BackupScheduler,
 ) {
     val backupVm: BackupViewModel = viewModel(
         key = "backup",
-        factory = BackupViewModel.factory(applicationContext, repository, prefs, scheduler),
+        factory = BackupViewModel.factory(appContext, repository, prefs, scheduler),
     )
     val onboardingVisible by backupVm.onboardingVisible.collectAsStateWithLifecycle()
 
