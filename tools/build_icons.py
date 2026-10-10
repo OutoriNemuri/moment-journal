@@ -56,7 +56,11 @@ DENSITIES = {
     "xxxhdpi": 4.0,
 }
 
-BRAND_INK = "#4A6350"
+# 图标背景色。必须与 res/values/colors.xml 的 ic_launcher_background 一致，
+# 否则自适应图标（API 26+）与 PNG 回退（API 25-）会长得不一样。
+BRAND_BG = "#1B4F9C"
+# 写在背景上的字形颜色。背景是深蓝，字形用纯白，对比度足够。
+GLYPH_ON_BG = "#FFFFFF"
 
 
 def fetch_glyph_path() -> str:
@@ -126,7 +130,7 @@ def main() -> int:
         px = int(round(LEGACY_DP * factor))
         d = RES / f"mipmap-{bucket}"
         d.mkdir(parents=True, exist_ok=True)
-        svg = wrap_svg(px, path_data, scale=0.62, bg=BRAND_INK, ink="#FFFFFF")
+        svg = wrap_svg(px, path_data, scale=0.62, bg=BRAND_BG, ink=GLYPH_ON_BG)
         for name in ("ic_launcher.png", "ic_launcher_round.png"):
             out = d / name
             render(svg, out, px)
@@ -136,7 +140,7 @@ def main() -> int:
     for bucket, factor in DENSITIES.items():
         px = int(round(FOREGROUND_DP * factor))
         d = RES / f"mipmap-{bucket}"
-        svg = wrap_svg(px, path_data, scale=0.48, bg=None, ink="#FFFFFF")
+        svg = wrap_svg(px, path_data, scale=0.48, bg=None, ink=GLYPH_ON_BG)
         out = d / "ic_launcher_foreground.png"
         render(svg, out, px)
         written.append(out)

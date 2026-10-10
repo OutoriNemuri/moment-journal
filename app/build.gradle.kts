@@ -13,10 +13,11 @@ android {
         applicationId = "com.nemuri.journal"
         minSdk = 28
         targetSdk = 35
-        // 版本号形如 0.1 (N)：versionName 显示给人看，versionCode 单调递增。
-        // Build 1 = 0.1 (1)，Build 2 = 0.1 (2)，见 docs/CHANGELOG.md
-        versionCode = 2
-        versionName = "0.1 (2)"
+        // 版本号形如 <次版本> (N)：versionName 给人看，versionCode 单调递增。
+        // 0.1 (1) = 首个可安装版本，0.1 (2) = 图标 + 0.2 前期改动，
+        // 0.2 (1) = 基本功能。见 docs/CHANGELOG.md
+        versionCode = 3
+        versionName = "0.2 (1)"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#FBFDF8</color>
+    <!--
+      应用图标背景色。前景字形是纯白（#FFFFFF），所以背景必须足够深，
+      否则白底白图完全看不见 —— 这正是此前的问题：背景曾被定义为
+      近白色 #FBFDF8，而前景也是白的。
+      同时此值需与 tools/build_icons.py 中的 BRAND_BG 保持一致，
+      否则高版本（自适应图标）与低版本（PNG 回退）观感会不同。
+    -->
+    <color name="ic_launcher_background">#1B4F9C</color>
 </resources>
