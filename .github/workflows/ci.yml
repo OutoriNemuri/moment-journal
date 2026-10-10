@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 单元测试与构建
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 配置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 配置 Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # 格式契约的回归测试。这些用例是格式规范的可执行版本，
+      # 变红意味着历史日记会被错解 —— 必须先看测试再改代码。
+      - name: 单元测试
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: 构建 Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: 发布测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: moment-journal-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
