@@ -4,9 +4,10 @@
 
 ## 状态
 
-**0.1 (1) Beta — 范围已冻结，待实现。**
+**0.1 (2) Beta — Build 2 已可安装。**
 
-本仓库当前处于规划阶段，尚无源码。功能范围见 [docs/BETA-0.1-BUILD-1.md](docs/BETA-0.1-BUILD-1.md)。
+CI 全绿，产出 `moment-journal-debug.apk`。Build 1 完成「录、存、备」三个主干，
+Build 2 补齐应用图标。构建在 GitHub Actions 完成（本机无 JDK / Android SDK）。
 
 ## 概览
 
@@ -15,7 +16,7 @@
 | 应用名 | 时刻日记 / Moment Journal / 瞬間ジャーナル |
 | 包名 | `com.nemuri.journal` |
 | minSdk / targetSdk | 28 (Android 9) / 35 (Android 15) |
-| 当前版本 | `0.1 (1)` Beta |
+| 当前版本 | `0.1 (2)` Beta |
 
 ## 0.1 Build 1 范围
 
@@ -33,6 +34,7 @@
 
 ## 文档
 
+- [docs/CHANGELOG.md](docs/CHANGELOG.md) — 更新日志（每个 Build 一条）
 - [docs/BETA-0.1-BUILD-1.md](docs/BETA-0.1-BUILD-1.md) — 0.1 Build 1 范围定义、验收标准、已知风险
 - [docs/spec-v0.1.md](docs/spec-v0.1.md) — 原始企划存档
 

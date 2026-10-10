@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  API 26+ 使用自适应图标（adaptive icon）：系统会把前景按各厂家的形状
+  （圆形/方形/圆角矩形）裁切，因此前景必须是「透明底 + 居中留白」的图形，
+  颜色由 background 层提供。这样同一份资源在高版本上自动适配所有裁切形状。
+
+  API < 26 不支持 adaptive icon，回退到 res/mipmap-*/ic_launcher.png
+  （由 tools/build_icons.py 从同一份 Material Symbols `book` 字形生成，
+  保证高低版本的图形完全一致）。
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_foreground" />
 </adaptive-icon>
