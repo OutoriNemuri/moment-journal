@@ -80,6 +80,34 @@ def check_gradle_kts():
                      f"{rel(f)} unbalanced {name}: "
                      f"{stripped.count(open_c)} '{open_c}' vs {stripped.count(close_c)} '{close_c}'")
 
+        # A block declared inside ITSELF (e.g. `android {` nested in `android {`)
+        # is always a mistake and yields an obscure Kotlin DSL error. Use an
+        # actual bracket scan so that sibling blocks of the same name
+        # (pluginManagement/repositories and dependencyResolutionManagement/
+        # repositories) are not reported as nesting.
+        for block in ("android", "dependencies", "plugins", "ksp", "buildTypes",
+                      "defaultConfig", "compileOptions", "kotlinOptions",
+                      "buildFeatures", "packaging"):
+            stack = []
+            i = 0
+            while i < len(stripped):
+                if stripped[i] == "{":
+                    # what was this block opened by?
+                    line_start = stripped.rfind("\n", 0, i) + 1
+                    head = stripped[line_start:i].strip()
+                    stack.append(head)
+                    if head.endswith(block) or head == block:
+                        if sum(1 for h in stack[:-1]
+                               if h == block or h.endswith(block)) > 0:
+                            line = text[:i].count("\n") + 1
+                            fail("gradle-kts",
+                                 f"{rel(f)}:{line} '{block} {{' is nested inside "
+                                 f"another '{block} {{'")
+                elif stripped[i] == "}":
+                    if stack:
+                        stack.pop()
+                i += 1
+
 
 # ---------------------------------------------------------------- 2. Wrapper
 

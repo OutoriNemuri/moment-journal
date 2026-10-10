@@ -48,6 +48,14 @@ android {
     }
 }
 
+// Room 的 schema 导出位置。开着它才有基线可比对：
+// 0.1 之后任何 schema 变更都必须拿出对应的 Migration，
+// 没有导出的 schema 就没有"变更前长什么样"的凭据。
+// 导出的 JSON 参与版本管理，不进 .gitignore。
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
 

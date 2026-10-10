@@ -5,8 +5,10 @@ import androidx.core.content.edit
 import androidx.documentfile.provider.DocumentFile
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
@@ -81,11 +83,16 @@ object BackupScheduler {
 
     private fun schedulePeriodicFloor(context: Context) {
         if (!isConfigured(context)) return
-        val request = androidx.work.PeriodicWorkRequestBuilder<BackupWorker>(15, TimeUnit.MINUTES)
+        val request = PeriodicWorkRequestBuilder<BackupWorker>(15, TimeUnit.MINUTES)
             .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).build())
             .build()
-        WorkManager.getInstance(context)
-            .enqueueUniquePeriodicWork(WORK_NAME_PERIODIC, ExistingWorkPolicy.KEEP, request)
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            WORK_NAME_PERIODIC,
+            // 周期任务用的是 ExistingPeriodicWorkPolicy，与一次性任务的
+            // ExistingWorkPolicy 是两个不同的枚举，不能混用。
+            ExistingPeriodicWorkPolicy.KEEP,
+            request,
+        )
     }
 
     /**
