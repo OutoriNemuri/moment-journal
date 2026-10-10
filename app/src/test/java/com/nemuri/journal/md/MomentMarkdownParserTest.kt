@@ -23,7 +23,11 @@ class MomentMarkdownParserTest {
         val time = spans.filterIsInstance<InlineSpan.Time>().single()
         assertEquals("2026-10-10T20:00:00+08:00", time.isoText)
         // 2026-10-10T20:00:00+08:00 == 2026-10-10T12:00:00Z
-        assertEquals(1_760_097_600_000L, time.epochMillis)
+        // 手写的字面量曾经写错整整一年（写成 2025 的 epoch），
+        // 所以这里改成用 java.time 现算，避免人为抄错数字。
+        val expected = java.time.OffsetDateTime.parse("2026-10-10T20:00:00+08:00")
+            .toInstant().toEpochMilli()
+        assertEquals(expected, time.epochMillis)
     }
 
     @Test

@@ -117,8 +117,12 @@ object MomentMarkdownParser {
         val span: InlineSpan? = when (tag) {
             MomentMarkdown.TAG_TIME -> {
                 val iso = arg.trim()
-                if (iso.isEmpty()) null
-                else InlineSpan.Time(isoText = iso, epochMillis = parseIso(iso), sourceRange = range)
+                // 时间戳必须能被解析才算合法。解析不了就整段降级为普通文本，
+                // 与地点/图片的处理保持一致 —— 否则会产生一个"有时刻标记但
+                // 没有时刻值"的畸形片段，渲染端还得单独兜底。
+                val epoch = if (iso.isEmpty()) null else parseIso(iso)
+                if (epoch == null) null
+                else InlineSpan.Time(isoText = iso, epochMillis = epoch, sourceRange = range)
             }
 
             MomentMarkdown.TAG_LOCATION -> {

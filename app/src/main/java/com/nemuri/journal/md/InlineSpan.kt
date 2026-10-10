@@ -25,10 +25,10 @@ sealed interface InlineSpan {
 
     enum class Style { BOLD, ITALIC, UNDERLINE, STRIKETHROUGH }
 
-    /** 时间点嵌入。 */
+    /** 时间点嵌入。解析成功才会构造本类型，因此 [epochMillis] 必定有效。 */
     data class Time(
         val isoText: String,
-        val epochMillis: Long?,
+        val epochMillis: Long,
         override val sourceRange: IntRange,
     ) : InlineSpan
 
