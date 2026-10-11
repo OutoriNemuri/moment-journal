@@ -34,6 +34,25 @@ class BackupViewModel(
     private val appContext: android.content.Context,
 ) : ViewModel() {
 
+    // ================================================================
+    // 属性声明顺序在这个类里是**有语义的**，不是排版问题。
+    //
+    // Kotlin 按书写顺序初始化属性，而 `init` 块也在同一顺序中执行。
+    // 因此 init 块必须放在它访问的全部属性**之后**。
+    //
+    // 曾经把 init 写在 `_configured` 之前，而 refreshOnboarding()
+    // 的第一行就是 `_configured.value = ...`。因为 viewModelScope 用的是
+    // `Dispatchers.Main.immediate`，协程在主线程上会**同步执行** ——
+    // 于是 init 尚未返回就访问了还未初始化的属性，启动即崩溃：
+    //
+    //     NullPointerException: MutableStateFlow.setValue(...) on a null object reference
+    //         at BackupViewModel.refreshOnboarding(BackupViewModel.kt:63)
+    //         at BackupViewModel.<init>(BackupViewModel.kt:52)
+    //         Suppressed: ... [StandaloneCoroutine{...}, Dispatchers.Main.immediate]
+    //
+    // 以后在这个类里新增属性时，**加到 init 块之前**，或把 init 保持在最后。
+    // ================================================================
+
     /**
      * 是否需要引导用户配置备份目录。
      *
@@ -47,22 +66,6 @@ class BackupViewModel(
      */
     private val _onboardingVisible = MutableStateFlow(true)
     val onboardingVisible: StateFlow<Boolean> = _onboardingVisible.asStateFlow()
-
-    init {
-        viewModelScope.launch { refreshOnboarding() }
-    }
-
-    /**
-     * 重新判定是否需要引导。
-     *
-     * 在启动时、以及每次回到前台时都应调用 —— 用户可能在系统设置里
-     * 撤销了授权，而应用对此一无所知。
-     */
-    suspend fun refreshOnboarding() {
-        val usable = scheduler.isConfigured() && scheduler.isDirectoryUsable()
-        _configured.value = usable
-        _onboardingVisible.value = !usable
-    }
 
     /** 是否已配置可用目录。未配置时主界面要挂常驻提示。 */
     private val _configured = MutableStateFlow(prefs.backupConfigured)
@@ -91,6 +94,32 @@ class BackupViewModel(
     /** 用户是否已关闭当前这条失败提示。关闭后不再重复展示，直到出现新的失败。 */
     private val _dismissed = MutableStateFlow(false)
     val dismissed: StateFlow<Boolean> = _dismissed.asStateFlow()
+
+    /** 已授权目录中的归档列表。界面进入恢复流程时加载。 */
+    private val _archives = MutableStateFlow<List<MjbBackupManager.ArchiveEntry>>(emptyList())
+    val archives: StateFlow<List<MjbBackupManager.ArchiveEntry>> = _archives.asStateFlow()
+
+    private val _archivesLoading = MutableStateFlow(false)
+    val archivesLoading: StateFlow<Boolean> = _archivesLoading.asStateFlow()
+
+    // ================================================================
+    // init 必须在所有属性之后。见本类顶部的说明。
+    // ================================================================
+    init {
+        viewModelScope.launch { refreshOnboarding() }
+    }
+
+    /**
+     * 重新判定是否需要引导。
+     *
+     * 在启动时、以及每次回到前台时都应调用 —— 用户可能在系统设置里
+     * 撤销了授权，而应用对此一无所知。
+     */
+    suspend fun refreshOnboarding() {
+        val usable = scheduler.isConfigured() && scheduler.isDirectoryUsable()
+        _configured.value = usable
+        _onboardingVisible.value = !usable
+    }
 
     fun dismissError() {
         _dismissed.value = true
@@ -212,13 +241,6 @@ class BackupViewModel(
             }
         }
     }
-
-    /** 已授权目录中的归档列表。界面进入恢复流程时加载。 */
-    private val _archives = MutableStateFlow<List<MjbBackupManager.ArchiveEntry>>(emptyList())
-    val archives: StateFlow<List<MjbBackupManager.ArchiveEntry>> = _archives.asStateFlow()
-
-    private val _archivesLoading = MutableStateFlow(false)
-    val archivesLoading: StateFlow<Boolean> = _archivesLoading.asStateFlow()
 
     fun loadArchives() {
         viewModelScope.launch {

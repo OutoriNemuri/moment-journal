@@ -541,6 +541,68 @@ def check_missing_imports():
             fail("kotlin", f"{rel(f)} uses Modifier.{name}( but does not import {imp}")
 
 
+def check_init_block_after_properties():
+    """Flag an `init` block that reads a backing property declared after it.
+
+    Kotlin initialises properties in source order, and `init` blocks run in
+    that same order. A ViewModel whose init launches a coroutine on
+    `viewModelScope` runs it on Dispatchers.Main.immediate, which executes
+    **synchronously** when already on the main thread - so the body runs
+    before the constructor finishes, reading whatever property it touches
+    while that property is still null.
+
+    That produced a hard crash at launch:
+
+        NullPointerException: MutableStateFlow.setValue(...) on a null object reference
+            at BackupViewModel.refreshOnboarding(BackupViewModel.kt:63)
+            at BackupViewModel.<init>(BackupViewModel.kt:52)
+
+    The compiler does not complain: reading a not-yet-assigned property is
+    legal Kotlin, it is only wrong here.
+
+    Deliberately narrow, to avoid the false positives an earlier version
+    produced (`result` inside a function body, computed `get()` properties):
+    only a property that
+      * is a backing field (`private val _name = MutableStateFlow(...)`), and
+      * is declared after the init block, and
+      * is referenced in the init block's immediate body
+    is reported.
+    """
+    BACKING = re.compile(r"^\s+(?:private |internal )?val (_\w+)\s*[:=].*MutableStateFlow")
+    for f in ROOT.rglob("*.kt"):
+        if "/build/" in str(f):
+            continue
+        lines = f.read_text(encoding="utf-8").split("\n")
+        for idx, line in enumerate(lines):
+            if line.strip() != "init {":
+                continue
+            if "class " not in "\n".join(lines[:idx]):
+                continue
+            # the init block body: up to the matching closing brace
+            depth = 0
+            end_idx = idx
+            for j in range(idx, len(lines)):
+                depth += lines[j].count("{") - lines[j].count("}")
+                if depth == 0 and j > idx:
+                    end_idx = j
+                    break
+            init_body = "\n".join(lines[idx:end_idx + 1])
+
+            for j in range(end_idx + 1, len(lines)):
+                m = BACKING.match(lines[j])
+                if not m:
+                    # leave the class body at the first top-level declaration
+                    if re.match(r"^(class|object|fun|@|private fun|internal fun)", lines[j]):
+                        break
+                    continue
+                name = m.group(1)
+                if re.search(r"\b" + re.escape(name) + r"\b", init_body):
+                    fail("kotlin",
+                         f"{rel(f)}:{j+1} backing property {name} is declared after the "
+                         f"init block at line {idx+1}, which references it; init runs "
+                         f"before that assignment (viewModelScope is Main.immediate)")
+
+
 def check_conditional_return_in_composable():
     """Flag a bare `return` inside a @Composable body.
 
@@ -708,6 +770,7 @@ def main():
     check_mechanical_file_damage()
     check_missing_imports()
     check_conditional_return_in_composable()
+    check_init_block_after_properties()
 
     print("=" * 68)
     print("pre-push validation")
