@@ -10,6 +10,8 @@ Moment Journal · 瞬間ジャーナル
 
 [下载最新版](https://github.com/OutoriNemuri/moment-journal/releases) · [反馈问题](https://github.com/OutoriNemuri/moment-journal/issues)
 
+[English](README.en.md) · **简体中文** · [日本語](README.ja.md)
+
 </div>
 
 ---

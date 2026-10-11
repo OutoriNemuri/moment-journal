@@ -449,9 +449,30 @@ def check_docs():
     if not ver:
         return
     version = ver.group(1)
-    # README 必须写当前版本：它是用户判断"我装的是哪版"的依据
-    if readme.exists() and version not in readme.read_text(encoding="utf-8"):
-        fail("docs", f"README does not mention the current version {version}")
+    # 每个语种的 README 都必须写当前版本 —— 它是用户判断"我装的是哪版"的依据。
+    # 漏更新某一个语种是很容易发生的，因此逐个检查。
+    for name in ("README.md", "README.en.md", "README.ja.md"):
+        f = ROOT / name
+        if not f.exists():
+            fail("docs", f"{name} is missing (the README set has 3 languages)")
+            continue
+        if version not in f.read_text(encoding="utf-8"):
+            fail("docs", f"{name} does not mention the current version {version}")
+
+    # 语言切换：三个文件必须互相链接，否则某个语种会成为孤岛
+    for name, others in (
+        ("README.md", ("README.en.md", "README.ja.md")),
+        ("README.en.md", ("README.md", "README.ja.md")),
+        ("README.ja.md", ("README.md", "README.en.md")),
+    ):
+        f = ROOT / name
+        if not f.exists():
+            continue
+        text = f.read_text(encoding="utf-8")
+        for other in others:
+            if other not in text:
+                fail("docs", f"{name} does not link to {other}; "
+                             f"language switching would be one-way")
 
     changelog = ROOT / "docs" / "CHANGELOG.md"
     if changelog.exists():
