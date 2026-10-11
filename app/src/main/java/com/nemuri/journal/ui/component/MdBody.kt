@@ -65,16 +65,19 @@ private fun MdLine(line: MarkdownLine) {
         else -> MaterialTheme.typography.bodyLarge
     }
 
+    // 空行用 if/else 两枝表达，不用提前 return。
+    // 提前 return 会让组合结构在两次重组间变化（有内容时要走下面的 Row），
+    // 现在虽然不崩，但只要在 return 之后加一个 remember 就会崩，
+    // 因此不留下这种写法。
     if (line.spans.isEmpty()) {
         Spacer(Modifier.height(textStyle.lineHeight.value.dp.takeIf { it > 0.dp } ?: 6.dp))
-        return
-    }
-
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        if (line.bullet) {
-            Text("•  ", style = textStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    } else {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            if (line.bullet) {
+                Text("•  ", style = textStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            RenderSpans(line.spans, textStyle)
         }
-        RenderSpans(line.spans, textStyle)
     }
 }
 
@@ -102,7 +105,10 @@ private fun RenderSpans(spans: List<InlineSpan>, textStyle: TextStyle) {
 
 @Composable
 private fun FlushText(buffer: MutableList<InlineSpan>, textStyle: TextStyle) {
-    if (buffer.isEmpty()) return
+    if (buffer.isEmpty()) {
+        // 没有内容可画。同样不用提前 return —— 见 MdLine 中的说明。
+        return@FlushText
+    }
 
     val annotated = buildAnnotatedString {
         buffer.forEach { span ->

@@ -133,11 +133,30 @@ private fun JournalApp(
     // 判据是「目录当前能否使用」而不是「用户是否点过按钮」——
     // 用户可能在系统设置里撤销授权，那样应用必须重新引导，
     // 而不是进去之后让备份静默失败。
+    //
+    // ⚠️ 两种状态必须**各自独立成枝**，不能写成
+    //     `if (...) { 引导页(); return }` 后面接主界面。
+    //
+    // 原因：`onboardingVisible` 初值为 true（判定是异步的），首帧必然走引导页。
+    // 若用 return 提前退出，第二次重组会突然开始执行下面的 `rememberNavController()` ——
+    // 同一个组合位点在不同次重组中多出状态读取，Compose 会直接抛异常。
+    // 这正是本次闪退的原因。
     if (onboardingVisible) {
         BackupOnboardingScreen(viewModel = backupVm, onFinished = {})
-        return
+    } else {
+        MainContent(backupVm = backupVm)
     }
+}
 
+/**
+ * 引导完成后的主界面。
+ *
+ * 单独抽成一个函数，使它与 [BackupOnboardingScreen] 成为**并列的两个组合分支**，
+ * 而不是同一条语句流上的前后两段。这样 Compose 在两种状态间切换时
+ * 是在两棵独立的子树之间切换，不存在"多出/少掉 remember"的问题。
+ */
+@Composable
+private fun MainContent(backupVm: BackupViewModel) {
     val navController = rememberNavController()
     val backupError by backupVm.errorState.collectAsStateWithLifecycle()
     val backupErrorDetails by backupVm.errorDetails.collectAsStateWithLifecycle()

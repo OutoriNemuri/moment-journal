@@ -94,17 +94,55 @@ fun EditorScreen(
     /** 进入查找页。三档范围由查找页自己切换。 */
     onOpenSearch: (SearchViewModel.Scope) -> Unit = {},
 ) {
+    val loadState by viewModel.loadState.collectAsStateWithLifecycle()
+
+    // 数据尚未就绪时不渲染编辑区。
+    // 此前以空值作初值直接渲染，于是打开日记会先闪一帧「空标题 + 1970 年」。
+    //
+    // ⚠️ 必须写成 if/else 的**并列两枝**，不能在 if 里提前 return。
+    // loadState 每次打开日记都会经历 Loading → Ready，
+    // 若用 return 提前退出，第二次重组会突然开始执行下面的 Scaffold ——
+    // 同一个组合位点在不同重组间多出 remember 调用，Compose 会抛异常。
+    if (loadState != EditorViewModel.LoadState.Ready) {
+        EditorLoadingScreen(
+            missing = loadState == EditorViewModel.LoadState.Missing,
+            onCloseEntry = onCloseEntry,
+            onOpenSidebar = onOpenSidebar,
+        )
+    } else {
+        EditorContent(
+            viewModel = viewModel,
+            onCloseEntry = onCloseEntry,
+            onOpenSidebar = onOpenSidebar,
+            onCreateEntry = onCreateEntry,
+            onOpenSearch = onOpenSearch,
+        )
+    }
+}
+
+/**
+ * 编辑器的正文部分。
+ *
+ * 抽成独立函数，与 [EditorLoadingScreen] 构成并列的两个组合分支，
+ * 而不是同一条语句流上的前后两段 —— 原因见调用处的注释。
+ */
+@Composable
+private fun EditorContent(
+    viewModel: EditorViewModel,
+    onCloseEntry: () -> Unit,
+    onOpenSidebar: () -> Unit,
+    onCreateEntry: () -> Unit,
+    onOpenSearch: (SearchViewModel.Scope) -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val loadState by viewModel.loadState.collectAsStateWithLifecycle()
     val title by viewModel.title.collectAsStateWithLifecycle()
     val body by viewModel.body.collectAsStateWithLifecycle()
     val createdAt by viewModel.createdAt.collectAsStateWithLifecycle()
     val saveState by viewModel.saveState.collectAsStateWithLifecycle()
 
     var showPreview by remember { mutableStateOf(false) }
-    // 四位一体的抽屉状态：一级抽屉与三个二级抽屉
     var showActionSheet by remember { mutableStateOf(false) }
     var showCopySheet by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
@@ -113,21 +151,12 @@ fun EditorScreen(
     var toast by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    /**
-     * 提示的唯一出口。
-     *
-     * 变化时交给 SnackbarHost 显示，显示结束（或超时）后清空状态 ——
-     * 清空是必要的，否则同一条消息再次设置时状态没变化，不会重新触发。
-     */
     LaunchedEffect(toast) {
         val message = toast ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
         toast = null
     }
 
-    // 待写入的导出内容。SAF 的 CreateDocument 会先返回，用户选完位置才回调，
-    // 因此内容要先暂存起来。用具名类型而不是 Pair：Pair 的 first/second
-    // 在调用处看不出含义，已经因此写错过一次。
     var pendingTextExport by remember { mutableStateOf<TextExport?>(null) }
 
     val imagePicker = rememberLauncherForActivityResult(
@@ -141,8 +170,6 @@ fun EditorScreen(
         }
     }
 
-    // 文本导出：让用户选保存位置。SAF 返回的 Uri 可能指向任意位置，
-    // 这里只负责把内容写进去，写失败必须让用户看见。
     val textExporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("*/*")
     ) { uri ->
@@ -156,22 +183,12 @@ fun EditorScreen(
             toast = if (ok.isSuccess) {
                 context.getString(R.string.export_done)
             } else {
-                context.getString(
-                    R.string.export_failed,
-                    ok.exceptionOrNull()?.message ?: "",
-                )
+                context.getString(R.string.export_failed, ok.exceptionOrNull()?.message ?: "")
             }
         }
         pendingTextExport = null
     }
 
-    /**
-     * 关闭当前日记。
-     *
-     * 先把未落库的草稿推一次再离开 —— 400ms 的防抖窗口内用户可能刚敲完就关。
-     * 系统返回手势也走这条路径：编辑器是主界面，返回的语义是
-     * 「收起当前这篇，回到占位」，而不是「退出应用」。
-     */
     val closeEntry: () -> Unit = {
         scope.launch {
             viewModel.flushNow()
@@ -179,18 +196,6 @@ fun EditorScreen(
         }
     }
     BackHandler { closeEntry() }
-
-    // 数据尚未就绪时不渲染编辑区。
-    // 此前以空值作初值直接渲染，于是打开日记会先闪一帧「空标题 + 1970 年」。
-    if (loadState != EditorViewModel.LoadState.Ready) {
-        EditorLoadingScreen(
-            missing = loadState == EditorViewModel.LoadState.Missing,
-            onCloseEntry = onCloseEntry,
-            onOpenSidebar = onOpenSidebar,
-        )
-        // 缺失状态下不需要下面任何编辑逻辑，直接返回
-        if (loadState == EditorViewModel.LoadState.Missing) return
-    }
 
     Scaffold(
         snackbarHost = {

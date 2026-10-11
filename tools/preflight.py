@@ -541,6 +541,60 @@ def check_missing_imports():
             fail("kotlin", f"{rel(f)} uses Modifier.{name}( but does not import {imp}")
 
 
+def check_conditional_return_in_composable():
+    """Flag a bare `return` inside a @Composable body.
+
+    Compose requires each call site to have the same structure on every
+    recomposition. A `return` that fires on one pass and not the next makes
+    the composition point suddenly execute (or skip) `remember*` calls, and
+    Compose throws. This crashes at runtime and the compiler says nothing,
+    so it needs checking here.
+
+    Skipped: returns inside lambdas / anonymous functions (`return@label`,
+    `return@launch`), and returns that are the last statement of a value
+    body. Those are fine.
+    """
+    for f in ROOT.rglob("*.kt"):
+        if "/build/" in str(f):
+            continue
+        lines = f.read_text(encoding="utf-8").split("\n")
+
+        # find @Composable functions and their body ranges
+        in_composable = False
+        depth = 0
+        body_start_depth = None
+        for i, line in enumerate(lines, start=1):
+            stripped = line.strip()
+            is_composable = stripped == "@Composable"
+            code = line.split("//")[0]
+
+            if is_composable:
+                in_composable = True
+                continue
+
+            if in_composable and re.search(r"\bfun\s+\w+\s*\(", code):
+                body_start_depth = depth
+                in_composable = "pending"   # now tracking the body
+
+            if in_composable == "pending":
+                # a bare `return` outside a lambda
+                if re.search(r"(?<![\w@])return\s*$", stripped) and "@" not in stripped:
+                    # 排除值体函数的结尾 return（形如 `= ...`）
+                    prev = "\n".join(lines[max(0, i - 4):i])
+                    if "=" not in prev.split("fun")[-1].split("\n")[0] or "{" in prev:
+                        fail("kotlin",
+                             f"{rel(f)}:{i} bare `return` inside a @Composable; "
+                             f"structure must not change between recompositions "
+                             f"- use if/else branches instead")
+                depth += code.count("{") - code.count("}")
+                if body_start_depth is not None and depth <= body_start_depth and "}" in code:
+                    in_composable = False
+                    body_start_depth = None
+                continue
+
+            depth += code.count("{") - code.count("}")
+
+
 def check_mechanical_file_damage():
     """Catch damage left behind by scripted file edits.
 
@@ -653,6 +707,7 @@ def main():
     check_flow_collect()
     check_mechanical_file_damage()
     check_missing_imports()
+    check_conditional_return_in_composable()
 
     print("=" * 68)
     print("pre-push validation")
