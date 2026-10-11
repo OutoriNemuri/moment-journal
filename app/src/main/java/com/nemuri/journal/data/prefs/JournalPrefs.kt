@@ -69,8 +69,32 @@ class JournalPrefs(context: Context) {
     val backupConfigured: Boolean
         get() = backupTreeUri != null
 
+    // ---------------------------------------------------------- 主题
+
+    /**
+     * 配色方案。
+     *
+     * 存的是枚举**名字**而不是序号：序号会随枚举顺序变化而失效，
+     * 用户升级后主题可能悄悄变成另一个。
+     */
+    var colorScheme: String
+        get() = prefs.getString(KEY_COLOR_SCHEME, DEFAULT_COLOR_SCHEME) ?: DEFAULT_COLOR_SCHEME
+        set(value) = prefs.edit { putString(KEY_COLOR_SCHEME, value) }
+
+    /** 深浅模式。同样存名字。 */
+    var darkMode: String
+        get() = prefs.getString(KEY_DARK_MODE, DEFAULT_DARK_MODE) ?: DEFAULT_DARK_MODE
+        set(value) = prefs.edit { putString(KEY_DARK_MODE, value) }
+
     companion object {
         private const val NAME = "journal_prefs"
+        private const val KEY_COLOR_SCHEME = "color_scheme"
+        private const val KEY_DARK_MODE = "dark_mode"
+
+        /** 默认品牌绿。低版本没有动态取色，必须有可用的默认值。 */
+        const val DEFAULT_COLOR_SCHEME = "GREEN"
+        /** 默认跟随系统。 */
+        const val DEFAULT_DARK_MODE = "SYSTEM"
         private const val KEY_CURRENT_BOOK = "current_book_id"
         private const val KEY_BACKUP_URI = "backup_tree_uri"
         private const val KEY_LAST_BACKUP_AT = "last_backup_at"

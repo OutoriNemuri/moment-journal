@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nemuri.journal.R
 import com.nemuri.journal.export.Exporter
+import com.nemuri.journal.export.SliceSizing
 import com.nemuri.journal.md.MomentMarkdown
 import com.nemuri.journal.ui.component.MdBody
 import com.nemuri.journal.util.ImageStore
@@ -408,7 +409,7 @@ private fun EditorContent(
                 pendingTextExport = TextExport(body = payload.body)
                 textExporter.launch(payload.suggestedName + "." + format.extension)
             },
-            onImage = { slice ->
+            onImage = { strategy ->
                 showExportSheet = false
                 scope.launch {
                     val payload = viewModel.exportPayload(plainText = false)
@@ -419,15 +420,26 @@ private fun EditorContent(
                             body = payload.body,
                             meta = TimeFormat.listStamp(payload.createdAt),
                             baseName = payload.suggestedName,
-                            slice = slice,
+                            strategy = strategy,
                         )
                     }
                     result.onSuccess { r ->
+                        // 「一张长图」但内容过长：这张图会长到没法看，
+                        // 因此不默默分享，而是提示用户改用切分。
+                        // 判定依据是可读性（约几屏高），不是内存。
+                        if (!r.sliced && SliceSizing.exceedsReadableLimit(r.totalHeight)) {
+                            toast = context.getString(R.string.export_too_long, screensTall(r.totalHeight))
+                            return@onSuccess
+                        }
                         // 渲染完成后再交给系统分享。图片可能有多张，统一走分享面板。
-                        Exporter.shareFiles(
-                            context, r.files, "image/png", payload.title,
-                        )
-                        if (r.sliced) toast = context.getString(R.string.export_sliced_done, r.files.size)
+                        Exporter.shareFiles(context, r.files, "image/png", payload.title)
+                        toast = when {
+                            r.fewerThanRequested ->
+                                context.getString(R.string.export_fewer_than_requested, r.files.size)
+                            r.sliced ->
+                                context.getString(R.string.export_sliced_done, r.files.size)
+                            else -> context.getString(R.string.export_done)
+                        }
                     }.onFailure {
                         toast = context.getString(R.string.export_failed, it.message ?: "")
                     }

@@ -48,6 +48,9 @@ import com.nemuri.journal.ui.screen.SearchViewModel
 import com.nemuri.journal.ui.screen.BackupBanner
 import com.nemuri.journal.ui.screen.Level
 import com.nemuri.journal.ui.screen.SettingsScreen
+import com.nemuri.journal.ui.screen.ThemeSettingsScreen
+import com.nemuri.journal.ui.theme.AppColorScheme
+import com.nemuri.journal.ui.theme.AppDarkMode
 import com.nemuri.journal.ui.theme.MomentJournalTheme
 
 class MainActivity : ComponentActivity() {
@@ -67,14 +70,30 @@ class MainActivity : ComponentActivity() {
         scheduler.onColdStart()
 
         setContent {
-            MomentJournalTheme {
-                // applicationContext 只能在 Activity 作用域内取得，
-                // 顶层 @Composable 拿不到它，所以在这里传进去。
+            // 主题选择存在 prefs 里。用 mutableStateOf 包一层是为了让
+            // 改动立刻反映到界面 —— 直接读 prefs 不会触发重组。
+            var colorScheme by remember { mutableStateOf(prefs.colorScheme) }
+            var darkMode by remember { mutableStateOf(prefs.darkMode) }
+
+            MomentJournalTheme(
+                colorScheme = AppColorScheme.entries
+                    .firstOrNull { it.name == colorScheme } ?: AppColorScheme.GREEN,
+                darkMode = AppDarkMode.entries
+                    .firstOrNull { it.name == darkMode } ?: AppDarkMode.SYSTEM,
+            ) {
                 JournalApp(
                     appContext = applicationContext,
                     repository = repository,
                     prefs = prefs,
                     scheduler = scheduler,
+                    onColorSchemeChange = { scheme ->
+                        prefs.colorScheme = scheme.name
+                        colorScheme = scheme.name
+                    },
+                    onDarkModeChange = { mode ->
+                        prefs.darkMode = mode.name
+                        darkMode = mode.name
+                    },
                 )
             }
         }
@@ -100,6 +119,7 @@ class MainActivity : ComponentActivity() {
 private object Routes {
     const val EDITOR = "editor?entryId={entryId}"
     const val SETTINGS = "settings"
+    const val THEME = "settings/theme"
     const val BACKUP = "backup"
     const val SEARCH = "search/{entryId}/{bookId}/{scope}"
 
@@ -121,6 +141,8 @@ private fun JournalApp(
     repository: MomentRepository,
     prefs: JournalPrefs,
     scheduler: BackupScheduler,
+    onColorSchemeChange: (AppColorScheme) -> Unit,
+    onDarkModeChange: (AppDarkMode) -> Unit,
 ) {
     val backupVm: BackupViewModel = viewModel(
         key = "backup",
@@ -148,6 +170,8 @@ private fun JournalApp(
             backupVm = backupVm,
             repository = repository,
             prefs = prefs,
+            onColorSchemeChange = onColorSchemeChange,
+            onDarkModeChange = onDarkModeChange,
         )
     }
 }
@@ -164,6 +188,8 @@ private fun MainContent(
     backupVm: BackupViewModel,
     repository: MomentRepository,
     prefs: JournalPrefs,
+    onColorSchemeChange: (AppColorScheme) -> Unit,
+    onDarkModeChange: (AppDarkMode) -> Unit,
 ) {
     val navController = rememberNavController()
     val backupError by backupVm.errorState.collectAsStateWithLifecycle()
@@ -323,6 +349,29 @@ private fun MainContent(
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onOpenBackup = { navController.navigate(Routes.BACKUP) },
+                onOpenTheme = { navController.navigate(Routes.THEME) },
+            )
+        }
+
+        composable(Routes.THEME) {
+            // 当前值从 prefs 读；改动通过回调写给 Activity 持有的状态，
+            // 由它写回 prefs 并触发整棵树重组。
+            var colorSchemeName by remember { mutableStateOf(prefs.colorScheme) }
+            var darkModeName by remember { mutableStateOf(prefs.darkMode) }
+            ThemeSettingsScreen(
+                colorScheme = AppColorScheme.entries
+                    .firstOrNull { it.name == colorSchemeName } ?: AppColorScheme.GREEN,
+                darkMode = AppDarkMode.entries
+                    .firstOrNull { it.name == darkModeName } ?: AppDarkMode.SYSTEM,
+                onColorSchemeChange = { scheme ->
+                    onColorSchemeChange(scheme)
+                    colorSchemeName = scheme.name
+                },
+                onDarkModeChange = { mode ->
+                    onDarkModeChange(mode)
+                    darkModeName = mode.name
+                },
+                onBack = { navController.popBackStack() },
             )
         }
 

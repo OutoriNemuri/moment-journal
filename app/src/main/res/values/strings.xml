@@ -62,7 +62,6 @@
     -->
     <string name="editor_placeholder_title">写作</string>
     <string name="editor_placeholder_hint">从侧栏选择一篇日记，或按右下角新建一篇。</string>
-    <string name="editor_missing_entry">日记已被删除</string>
     <string name="editor_missing_entry_body">这篇日记已被删除，无法继续编辑。</string>
     <string name="editor_missing_dismiss">返回</string>
 
@@ -93,10 +92,16 @@
     <string name="export_md">Markdown (.md)</string>
     <string name="export_md_desc">保留源文本与全部标记</string>
     <string name="export_long_image">一张长图</string>
-    <string name="export_long_image_desc">完整的一屏纵向长图</string>
-    <string name="export_sliced_image">切分的几张短图</string>
-    <string name="export_sliced_image_desc">分成固定高度的数张，便于逐张查看</string>
-    <string name="export_hint">内容过高的日记会自动切分，避免占用过多内存。</string>
+    <string name="export_long_image_desc">完整一张；内容过长时会提示改用切分</string>
+    <string name="export_slice_count">分成 %1$d 张</string>
+    <string name="export_slice_count_desc">平均分配，张数由你决定</string>
+    <string name="export_slice_screen">按屏幕切分</string>
+    <string name="export_slice_screen_desc">每张正好一屏，便于逐屏查看</string>
+    <string name="export_slice_ratio">按 %1$s 切分</string>
+    <string name="export_slice_ratio_desc">每张比例固定，与设备无关</string>
+    <string name="export_hint">切分不会劈开一行文字或一张图片。内容过长时「一张长图」会提示改用切分。</string>
+    <string name="export_too_long">内容过长，一张图会有 %1$d 屏那么高，建议改用切分</string>
+    <string name="export_fewer_than_requested">内容较短，实际只切出了 %1$d 张</string>
     <string name="export_done">已导出</string>
     <string name="export_failed">导出失败：%1$s</string>
     <string name="export_sliced_done">内容较长，已切分为 %1$d 张</string>
@@ -124,9 +129,24 @@
 
     <!-- ==================== 设置 ==================== -->
     <string name="settings_title">设置</string>
+    <string name="settings_section_appearance">外观</string>
     <string name="settings_section_data">数据</string>
     <string name="settings_backup">备份</string>
     <string name="settings_backup_desc">备份位置、立即备份、从归档恢复</string>
+
+    <!-- ==================== 主题 ==================== -->
+    <string name="theme_title">主题</string>
+    <string name="theme_section_color">配色</string>
+    <string name="theme_section_dark">深浅模式</string>
+    <string name="theme_color_green">品牌绿</string>
+    <string name="theme_color_blue">品牌蓝</string>
+    <string name="theme_color_dynamic">跟随壁纸</string>
+    <string name="theme_dynamic_unavailable">需要 Android 12 及以上</string>
+    <string name="theme_dark_system">跟随系统</string>
+    <string name="theme_dark_light">浅色</string>
+    <string name="theme_dark_dark">深色</string>
+    <string name="settings_theme">主题</string>
+    <string name="settings_theme_desc">配色与深浅模式</string>
 
     <!-- ==================== 备份 ==================== -->
     <string name="backup_title">备份</string>

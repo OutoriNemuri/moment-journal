@@ -33,9 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.compose.ui.res.stringResource
 import com.nemuri.journal.R
 import com.nemuri.journal.export.Exporter
+import com.nemuri.journal.export.SliceStrategy
 
 /**
  * 编辑界面右上角的功能抽屉，以及它展开的四个二级抽屉。
@@ -167,7 +169,7 @@ fun CopySheet(
 fun ExportSheet(
     onDismiss: () -> Unit,
     onText: (Exporter.TextFormat) -> Unit,
-    onImage: (slice: Boolean) -> Unit,
+    onImage: (SliceStrategy) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -177,12 +179,53 @@ fun ExportSheet(
             ActionRow(stringResource(R.string.export_md), stringResource(R.string.export_md_desc)) { onText(Exporter.TextFormat.MARKDOWN) }
 
             SectionLabel(stringResource(R.string.export_section_image))
-            ActionRow(stringResource(R.string.export_long_image), stringResource(R.string.export_long_image_desc)) { onImage(false) }
-            ActionRow(stringResource(R.string.export_sliced_image), stringResource(R.string.export_sliced_image_desc)) { onImage(true) }
+            // 不切
+            ActionRow(
+                stringResource(R.string.export_long_image),
+                stringResource(R.string.export_long_image_desc),
+            ) { onImage(SliceStrategy.None) }
+
+            // 分成 N 张。张数直接列出来，省掉再进一层选择。
+            COUNT_OPTIONS.forEach { n ->
+                ActionRow(
+                    stringResource(R.string.export_slice_count, n),
+                    stringResource(R.string.export_slice_count_desc),
+                ) { onImage(SliceStrategy.Count(n)) }
+            }
+
+            // 按屏幕物理高度切分
+            ActionRow(
+                stringResource(R.string.export_slice_screen),
+                stringResource(R.string.export_slice_screen_desc),
+            ) { onImage(SliceStrategy.Screen(screenHeightPx())) }
+
+            // 按固定比例
+            ActionRow(
+                stringResource(R.string.export_slice_ratio, "4:3"),
+                stringResource(R.string.export_slice_ratio_desc),
+            ) { onImage(SliceStrategy.RATIO_4_3) }
+            ActionRow(
+                stringResource(R.string.export_slice_ratio, "5:3"),
+                stringResource(R.string.export_slice_ratio_desc),
+            ) { onImage(SliceStrategy.RATIO_5_3) }
 
             Hint(stringResource(R.string.export_hint))
         }
     }
+}
+
+/**
+ * 屏幕物理高度，像素。
+ *
+ * 用物理高度而非可用高度：这样每张导出图与屏幕等宽等高，
+ * 「逐屏查看」时图片与屏幕一一对应，不会因多出/少掉状态栏而错位。
+ */
+@Composable
+private fun screenHeightPx(): Int {
+    val config = androidx.compose.ui.platform.LocalConfiguration.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    // 用 density 直接换算，不引 dp 扩展 —— 避免在这个小函数里堆导入
+    return (config.screenHeightDp * density.density).roundToInt()
 }
 
 /**

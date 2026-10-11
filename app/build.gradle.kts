@@ -16,9 +16,10 @@ android {
         // 版本号形如 <次版本> (N)：versionName 给人看，versionCode 单调递增。
         // 0.1 (1) 首个可安装版本 · 0.1 (2) 图标 + 0.2 前期改动 ·
         // 0.2 (1) 基本功能 · 0.2.1 (1) 主界面改为编辑器 ·
-        // 0.2.2 (1) 设置入口与十项修复。见 docs/CHANGELOG.md
-        versionCode = 5
-        versionName = "0.2.2 (1)"
+        // 0.2.2 (1) 设置入口与十项修复 ·
+        // 0.3 (1) 导出尺寸重定与主题。见 docs/CHANGELOG.md
+        versionCode = 6
+        versionName = "0.3 (1)"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }

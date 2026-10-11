@@ -33,9 +33,14 @@ import java.io.FileOutputStream
  * 重排一次理论上应该相同，但字体回退、断行策略任何细微差异都会让高度对不上，
  * 而高度对不上就会让后面所有内容错位。
  *
- * ## OOM 与自动切分
- * 位图占用 = 宽 × 高 × 4 字节。1080 × 100000 约 432 MB，必然 OOM。
- * 因此切分模式下每次只分配一张位图，画完立即 recycle。
+ * ## 尺寸的两种约束
+ * 一个值同时承担了两件事时容易出错，这里明确分开：
+ * - **内存约束**：位图占用 = 宽 × 高 × 4 字节，1080 × 100000 约 432 MB，
+ *   必然 OOM。因此切分模式下每次只分配一张位图，画完立即 recycle。
+ * - **可读性约束**：图太长就没法看。这个上限见 [SliceStrategy.MAX_SINGLE_HEIGHT]。
+ *
+ * 旧实现把两者混为一谈（都取 24,000px），结果是按内存反推的值被当成了产品规格，
+ * 产出 22:1 的长条。
  */
 class LongImageRenderer(private val context: Context) {
 
@@ -50,11 +55,13 @@ class LongImageRenderer(private val context: Context) {
         private const val LINE_SPACING = 1.4f
         private const val BLOCK_GAP = 28f
 
-        /** 单张位图的像素高度上限。1080 × 24000 × 4 ≈ 99 MB。 */
-        const val MAX_HEIGHT_PER_IMAGE = 24_000
-
-        /** 超过此高度即自动切分，不再尝试单张输出。 */
-        const val SINGLE_IMAGE_HEIGHT_LIMIT = 12_000
+        /**
+         * 单张位图的硬上限。1080 × 24000 × 4 ≈ 99 MB。
+         *
+         * 这是**内存**约束，不是可读性约束 —— 后者见
+         * [SliceStrategy.MAX_SINGLE_HEIGHT]。两者用途不同，不要混用。
+         */
+        const val HARD_MAX_HEIGHT = SliceStrategy.HARD_MAX_HEIGHT
     }
 
     private val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -90,12 +97,17 @@ class LongImageRenderer(private val context: Context) {
         /** 内容总高度（像素）。切分时用于向用户说明为何分成了多张。 */
         val totalHeight: Int,
         val sliced: Boolean,
+        /**
+         * 用户要求「分成 N 张」但块数不足，实际少于 N。
+         * 界面据此说明，避免用户以为功能出错。
+         */
+        val fewerThanRequested: Boolean = false,
     )
 
     /**
      * 渲染。
      *
-     * @param forceSlice 即使未超限也切分；对应「导出切分的几张短图」。
+     * @param strategy 切分方式。见 [SliceStrategy]。默认为不切。
      */
     fun render(
         title: String,
@@ -103,7 +115,7 @@ class LongImageRenderer(private val context: Context) {
         meta: String,
         outDir: File,
         baseName: String,
-        forceSlice: Boolean = false,
+        strategy: SliceStrategy = SliceStrategy.None,
     ): RenderResult {
         outDir.mkdirs()
         val contentWidth = DEFAULT_WIDTH - (PADDING * 2).toInt()
@@ -111,7 +123,19 @@ class LongImageRenderer(private val context: Context) {
         val blocks = layoutBlocks(title, body, meta, contentWidth)
         val totalHeight = blocks.sumOf { it.height.toDouble() }.toInt()
 
-        val sliced = forceSlice || totalHeight > SINGLE_IMAGE_HEIGHT_LIMIT
+        // 目标高度由策略给出。null 表示不切。
+        val perImage = SliceSizing.targetHeight(
+            strategy = strategy,
+            totalHeight = totalHeight,
+            contentWidth = contentWidth,
+            blockCount = blocks.size,
+        )
+        val sliced = perImage != null
+
+        // 「分成 N 张」但块数不足时，实际张数会少于要求，需要告知用户。
+        val fewerThanRequested = (strategy as? SliceStrategy.Count)?.let { req ->
+            (SliceSizing.plannedCount(strategy, totalHeight, contentWidth, blocks.size) ?: 1) < req.n
+        } ?: false
         val files = mutableListOf<File>()
 
         fun emit(slice: List<Block>, index: Int?, suffix: String) {
@@ -139,17 +163,20 @@ class LongImageRenderer(private val context: Context) {
         if (!sliced) {
             emit(blocks, null, "")
         } else {
+            val limit = perImage!!.toFloat()
             var i = 0
             var index = 1
             while (i < blocks.size) {
                 val slice = mutableListOf<Block>()
                 var h = 0f
-                while (i < blocks.size && h + blocks[i].height <= MAX_HEIGHT_PER_IMAGE) {
+                // 按块累积，不劈开一行字或一张图。
+                while (i < blocks.size && h + blocks[i].height <= limit) {
                     slice += blocks[i]
                     h += blocks[i].height
                     i++
                 }
-                // 单个块自身就超过上限：也必须画出去，否则会死循环
+                // 单个块自身就超过目标高度：也必须画出去，否则会死循环。
+                // 这种情况出现在"分成 N 张且 N 很大"时 —— 一张图占满一份。
                 if (slice.isEmpty()) {
                     slice += blocks[i]
                     i++
@@ -158,7 +185,7 @@ class LongImageRenderer(private val context: Context) {
                 index++
             }
         }
-        return RenderResult(files, totalHeight, sliced)
+        return RenderResult(files, totalHeight, sliced, fewerThanRequested)
     }
 
     // -------------------------------------------------------------- 排版

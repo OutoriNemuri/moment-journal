@@ -45,6 +45,8 @@ object Exporter {
         val files: List<File>,
         val totalHeight: Int,
         val sliced: Boolean,
+        /** 用户要求的张数多于此内容能切出的张数。界面需说明。 */
+        val fewerThanRequested: Boolean = false,
     )
 
     /** 渲染长图或切图，返回缓存中的文件。 */
@@ -54,7 +56,7 @@ object Exporter {
         body: String,
         meta: String,
         baseName: String,
-        slice: Boolean,
+        strategy: SliceStrategy,
     ): ImageResult {
         val dir = File(context.cacheDir, EXPORT_DIR).apply {
             // 先清掉上一次的产物，避免缓存目录无限增长
@@ -67,9 +69,14 @@ object Exporter {
             meta = meta,
             outDir = dir,
             baseName = baseName,
-            forceSlice = slice,
+            strategy = strategy,
         )
-        return ImageResult(result.files, result.totalHeight, result.sliced)
+        return ImageResult(
+            files = result.files,
+            totalHeight = result.totalHeight,
+            sliced = result.sliced,
+            fewerThanRequested = result.fewerThanRequested,
+        )
     }
 
     /** 分享若干文件。单张也是走同一条路径，避免两套逻辑。 */

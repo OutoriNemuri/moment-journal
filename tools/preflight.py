@@ -426,19 +426,39 @@ def check_manifest():
 # ---------------------------------------------------------------- 8. Doc consistency
 
 def check_docs():
-    """Version and package declared in docs must match the build config."""
+    """Version and package declared in docs must match the build config.
+
+    The README is written for users, so it may legitimately omit the package
+    name. The version, however, is user-visible and must not drift - it is
+    checked against whichever doc files mention a version at all.
+    """
     build = ROOT / "app" / "build.gradle.kts"
     if not build.exists():
         return
     text = build.read_text(encoding="utf-8")
     ns = re.search(r'namespace\s*=\s*"([^"]+)"', text)
     ver = re.search(r'versionName\s*=\s*"([^"]+)"', text)
+
     readme = ROOT / "README.md"
     if readme.exists() and ns:
-        if ns.group(1) not in readme.read_text(encoding="utf-8"):
-            warn("docs", f"README does not mention package {ns.group(1)}")
-    if ver and readme and ver.group(1) not in readme.read_text(encoding="utf-8"):
-        warn("docs", f"README does not mention version {ver.group(1)}")
+        # 只在 README 本来就提包名时校验，避免对面向用户的文档提开发者要求
+        if "com.nemuri.journal" in readme.read_text(encoding="utf-8") \
+                and ns.group(1) not in readme.read_text(encoding="utf-8"):
+            warn("docs", f"README mentions a package but not {ns.group(1)}")
+
+    if not ver:
+        return
+    version = ver.group(1)
+    # README 必须写当前版本：它是用户判断"我装的是哪版"的依据
+    if readme.exists() and version not in readme.read_text(encoding="utf-8"):
+        fail("docs", f"README does not mention the current version {version}")
+
+    changelog = ROOT / "docs" / "CHANGELOG.md"
+    if changelog.exists():
+        # 只要求 changelog 里有主版本节（如 "0.3"），不要求带 build 号
+        major = version.split(" ")[0]
+        if major not in changelog.read_text(encoding="utf-8"):
+            warn("docs", f"CHANGELOG has no entry for {major}")
 
 
 # ---------------------------------------------------------------- 9. identity refs
