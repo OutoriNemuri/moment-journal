@@ -28,7 +28,6 @@ import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.Done
@@ -126,6 +125,7 @@ fun EditorScreen(
  * 抽成独立函数，与 [EditorLoadingScreen] 构成并列的两个组合分支，
  * 而不是同一条语句流上的前后两段 —— 原因见调用处的注释。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditorContent(
     viewModel: EditorViewModel,

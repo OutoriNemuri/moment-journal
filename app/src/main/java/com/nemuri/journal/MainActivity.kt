@@ -144,7 +144,11 @@ private fun JournalApp(
     if (onboardingVisible) {
         BackupOnboardingScreen(viewModel = backupVm, onFinished = {})
     } else {
-        MainContent(backupVm = backupVm)
+        MainContent(
+            backupVm = backupVm,
+            repository = repository,
+            prefs = prefs,
+        )
     }
 }
 
@@ -156,7 +160,11 @@ private fun JournalApp(
  * 是在两棵独立的子树之间切换，不存在"多出/少掉 remember"的问题。
  */
 @Composable
-private fun MainContent(backupVm: BackupViewModel) {
+private fun MainContent(
+    backupVm: BackupViewModel,
+    repository: MomentRepository,
+    prefs: JournalPrefs,
+) {
     val navController = rememberNavController()
     val backupError by backupVm.errorState.collectAsStateWithLifecycle()
     val backupErrorDetails by backupVm.errorDetails.collectAsStateWithLifecycle()
