@@ -186,7 +186,7 @@ fun ExportSheet(
             ) { onImage(SliceStrategy.None) }
 
             // 分成 N 张。张数直接列出来，省掉再进一层选择。
-            COUNT_OPTIONS.forEach { n ->
+            SliceStrategy.COUNT_OPTIONS.forEach { n ->
                 ActionRow(
                     stringResource(R.string.export_slice_count, n),
                     stringResource(R.string.export_slice_count_desc),

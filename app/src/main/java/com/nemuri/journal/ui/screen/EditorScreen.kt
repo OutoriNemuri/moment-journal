@@ -463,6 +463,18 @@ private fun EditorContent(
 }
 
 /**
+ * 把图片高度换算成「几屏高」。
+ *
+ * 提示用户时说「这张图有 8 屏那么高」比「18000 像素」直观得多 ——
+ * 像素数用户没有概念，屏幕高度人人都有直觉。
+ */
+private fun screensTall(heightPx: Int): Int {
+    val screen = android.content.res.Resources.getSystem().displayMetrics.heightPixels
+    if (screen <= 0) return 1
+    return ((heightPx + screen - 1) / screen).coerceAtLeast(1)
+}
+
+/**
  * 待写入的导出内容。
  *
  * 只存正文，不存文件名 —— 文件名已经在 CreateDocument 时交给系统了，
